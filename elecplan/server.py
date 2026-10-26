@@ -16,10 +16,10 @@ import pymupdf
 
 from elecplan.export import export_pdf, parse_placements
 from elecplan.legend import build_legend_pdf, legend_layout
-from elecplan.library import load_symbols
+from elecplan.library import load_symbols, project_root
 from elecplan.sample_plan import build_sample_pdf
 
-STATIC = Path(__file__).resolve().parent / "static"
+STATIC = project_root() / "elecplan" / "static"
 MAX_PDF_BYTES = 80 * 1024 * 1024
 _PAGE_PATH = re.compile(r"/api/page/(\d+)\.png")
 _FITZ = threading.Lock()

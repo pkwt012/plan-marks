@@ -1,0 +1,11 @@
+Plan Marks for Windows
+
+1. Unzip this whole folder. Keep PlanMarks.exe and the _internal folder together.
+2. Double-click PlanMarks.exe.
+3. Your browser opens the plan marker. Leave the Plan Marks window open while you work.
+4. Close that window to quit.
+
+Windows may say it protected your PC, because this program is not signed.
+Choose More info, then Run anyway.
+
+Your PDFs stay on this computer. Nothing is uploaded.

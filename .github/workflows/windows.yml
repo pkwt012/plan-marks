@@ -1,0 +1,80 @@
+name: Windows app
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install
+        run: python -m pip install --upgrade pip && python -m pip install -r requirements.txt "pyinstaller>=6.11,<7"
+
+      - name: Check imports
+        run: python -c "import tkinter, pymupdf; from elecplan.server import App; from elecplan.library import project_root; assert (project_root() / 'symbols').is_dir()"
+
+      - name: Build
+        run: python -m PyInstaller packaging/planmarks.spec
+
+      - name: Add the Windows readme
+        run: copy packaging\WINDOWS.txt dist\PlanMarks\ReadMe.txt
+
+      - name: Confirm the program
+        shell: pwsh
+        run: |
+          $exe = Get-Item dist\PlanMarks\PlanMarks.exe
+          if ($exe.Length -lt 1MB) { throw "PlanMarks.exe is unexpectedly small" }
+          if (!(Test-Path dist\PlanMarks\_internal\symbols\catalog.json)) { throw "symbols were not packaged" }
+          if (!(Test-Path dist\PlanMarks\_internal\elecplan\static\index.html)) { throw "the page was not packaged" }
+          $dll = Get-ChildItem -Recurse dist\PlanMarks\_internal -Filter mupdfcpp64.dll
+          if (-not $dll) { throw "MuPDF library was not packaged" }
+
+      - name: Self-check the program
+        timeout-minutes: 4
+        shell: pwsh
+        run: |
+          $p = New-Object System.Diagnostics.Process
+          $p.StartInfo.FileName = (Resolve-Path "dist\PlanMarks\PlanMarks.exe").Path
+          $p.StartInfo.Arguments = "--self-check"
+          $p.StartInfo.UseShellExecute = $false
+          if (-not $p.Start()) { throw "could not start PlanMarks.exe" }
+          if (-not $p.WaitForExit(150000)) {
+            try { $p.Kill() } catch {}
+            throw "self-check timed out"
+          }
+          if ($p.ExitCode -ne 0) { throw "self-check exited $($p.ExitCode)" }
+
+      - name: Zip
+        shell: pwsh
+        run: Compress-Archive -Path dist\PlanMarks -DestinationPath PlanMarks-Windows.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PlanMarks-Windows
+          path: PlanMarks-Windows.zip
+
+      - name: Publish the download
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: windows-${{ github.run_number }}
+          name: Plan Marks for Windows
+          make_latest: "true"
+          files: PlanMarks-Windows.zip
+          body: |
+            Unzip the folder, then double-click PlanMarks.exe.
+            Leave the small Plan Marks window open while you work. Close it to quit.
+            Keep PlanMarks.exe and the _internal folder together.
+            Your PDFs stay on this computer.
+            If Windows says it protected your PC, choose More info, then Run anyway.

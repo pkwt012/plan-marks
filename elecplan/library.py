@@ -4,10 +4,24 @@ from __future__ import annotations
 
 import json
 import re
+import sys
 from pathlib import Path
 
 INK = "#141414"
-ROOT = Path(__file__).resolve().parents[1]
+
+
+def project_root() -> Path:
+    """Folder that contains elecplan/ and symbols/.
+
+    A Windows build unpacks those beside the program. Running from source
+    uses the repository folder.
+    """
+    if getattr(sys, "frozen", False):
+        return Path(getattr(sys, "_MEIPASS"))
+    return Path(__file__).resolve().parents[1]
+
+
+ROOT = project_root()
 SYMBOL_DIR = ROOT / "symbols"
 
 _ROT_TAG = re.compile(r'(<g\b[^>]*\bclass="[^"]*\brot\b[^"]*"[^>]*)(>)')

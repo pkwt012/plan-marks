@@ -4,7 +4,13 @@ Local tool for marking electrical symbols on PDF floor plans. The PDF never leav
 
 Open a plan, click a symbol, then click the sheet. Drag a mark to move it, drag the amber handle to rotate it, and export a new PDF with the symbols drawn on top of the original sheet.
 
-## Run
+## Windows
+
+Download the latest build from the [releases page](https://github.com/pkwt012/plan-marks/releases). Unzip the folder and double-click `PlanMarks.exe`. Your browser opens the plan marker. Leave the small Plan Marks window open while you work, and close it to quit. Keep `PlanMarks.exe` and the `_internal` folder together.
+
+Windows may say it protected your PC, because the program is not signed. Choose More info, then Run anyway.
+
+## Run from source
 
 ```bash
 python3 -m venv .venv
@@ -12,7 +18,16 @@ python3 -m venv .venv
 .venv/bin/python run.py
 ```
 
-Then use the page that opens (by default [http://127.0.0.1:8765](http://127.0.0.1:8765)). Press Ctrl+C in the terminal to stop.
+On Windows, use `py -3` instead of `python3` for those commands. Then use the page that opens (by default [http://127.0.0.1:8765](http://127.0.0.1:8765)). Press Ctrl+C in the terminal to stop.
+
+To rebuild the Windows program on a Windows PC:
+
+```bat
+py -3 -m pip install -r requirements.txt pyinstaller
+py -3 -m PyInstaller packaging\planmarks.spec
+```
+
+The program is in `dist\PlanMarks\`.
 
 PyMuPDF is the only dependency. There is no account, no upload, and no network call except the browser talking to this local server.
 
