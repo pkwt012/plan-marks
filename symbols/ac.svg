@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <g class="rot"></g>
+  <g class="label">
+    <rect x="6" y="30" width="88" height="40" fill="#ffffff" stroke="#141414" stroke-width="3.5"/>
+    <text x="50" y="56" text-anchor="middle" font-family="Helvetica" font-size="16" font-weight="700" fill="#141414">A/C</text>
+  </g>
+</svg>

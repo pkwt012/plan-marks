@@ -1,0 +1,307 @@
+{
+  "categories": [
+    {"id": "receptacles", "name": "Receptacles"},
+    {"id": "switches", "name": "Switches"},
+    {"id": "lighting", "name": "Lighting"},
+    {"id": "safety", "name": "Life safety"},
+    {"id": "lowvoltage", "name": "Low voltage"},
+    {"id": "equipment", "name": "Equipment"}
+  ],
+  "symbols": [
+    {
+      "id": "duplex",
+      "name": "Duplex outlet",
+      "category": "receptacles",
+      "file": "duplex.svg",
+      "wall": true,
+      "keywords": "receptacle plug outlet",
+      "hint": "Circle with two bars. Rotate so the bars run along the wall."
+    },
+    {
+      "id": "single",
+      "name": "Single outlet",
+      "category": "receptacles",
+      "file": "single.svg",
+      "wall": true,
+      "keywords": "single receptacle one outlet",
+      "hint": "One bar, marked SINGLE. Rotate the bar along the wall."
+    },
+    {
+      "id": "gfci",
+      "name": "GFI outlet",
+      "category": "receptacles",
+      "file": "gfci.svg",
+      "wall": true,
+      "keywords": "gfi gfci receptacle plug protected",
+      "hint": "Outlet marked GFI. The letters stay upright."
+    },
+    {
+      "id": "wp",
+      "name": "Weatherproof outlet",
+      "category": "receptacles",
+      "file": "wp.svg",
+      "wall": true,
+      "keywords": "weatherproof wr wp outdoor outlet",
+      "hint": "Outlet marked WP. The letters stay upright."
+    },
+    {
+      "id": "usb",
+      "name": "USB outlet",
+      "category": "receptacles",
+      "file": "usb.svg",
+      "wall": true,
+      "keywords": "usb receptacle outlet",
+      "hint": "Outlet marked USB. The letters stay upright."
+    },
+    {
+      "id": "ev",
+      "name": "EV outlet",
+      "category": "receptacles",
+      "file": "ev.svg",
+      "wall": true,
+      "keywords": "ev charger electric vehicle outlet",
+      "hint": "Outlet marked EV. The letters stay upright."
+    },
+    {
+      "id": "outlet30",
+      "name": "30A 240V outlet",
+      "category": "receptacles",
+      "file": "outlet30.svg",
+      "wall": true,
+      "keywords": "30 amp 240 volt outlet dryer range",
+      "hint": "Outlet marked 30A 240V. The letters stay upright."
+    },
+    {
+      "id": "outlet50",
+      "name": "50A 240V outlet",
+      "category": "receptacles",
+      "file": "outlet50.svg",
+      "wall": true,
+      "keywords": "50 amp 240 volt outlet range stove",
+      "hint": "Outlet marked 50A 240V. The letters stay upright."
+    },
+    {
+      "id": "switch",
+      "name": "Single-pole switch",
+      "category": "switches",
+      "file": "switch.svg",
+      "wall": true,
+      "keywords": "single pole spst s switch",
+      "hint": "The letter S. It stays upright."
+    },
+    {
+      "id": "switch3",
+      "name": "3-way switch",
+      "category": "switches",
+      "file": "switch3.svg",
+      "wall": true,
+      "keywords": "3 way three-way s3 switch",
+      "hint": "S3 stays upright."
+    },
+    {
+      "id": "switch4",
+      "name": "4-way switch",
+      "category": "switches",
+      "file": "switch4.svg",
+      "wall": true,
+      "keywords": "4 way four-way s4 switch",
+      "hint": "S4 stays upright."
+    },
+    {
+      "id": "dimmer",
+      "name": "Dimmer",
+      "category": "switches",
+      "file": "dimmer.svg",
+      "wall": true,
+      "keywords": "dimmer slider switch sd",
+      "hint": "Switch marked D. It stays upright."
+    },
+    {
+      "id": "timer",
+      "name": "Timer switch",
+      "category": "switches",
+      "file": "timer.svg",
+      "wall": true,
+      "keywords": "timer switch st time clock",
+      "hint": "Switch marked ST. It stays upright."
+    },
+    {
+      "id": "ceiling",
+      "name": "Ceiling light",
+      "category": "lighting",
+      "file": "ceiling.svg",
+      "wall": false,
+      "keywords": "light fixture surface luminaire",
+      "hint": "Circle and cross. Place it on the ceiling, in the room."
+    },
+    {
+      "id": "recessed",
+      "name": "Recessed light",
+      "category": "lighting",
+      "file": "recessed.svg",
+      "wall": false,
+      "keywords": "can downlight pot light recessed",
+      "hint": "Circle and dot. Place it on the ceiling, in the room."
+    },
+    {
+      "id": "sconce",
+      "name": "Wall light",
+      "category": "lighting",
+      "file": "sconce.svg",
+      "wall": true,
+      "keywords": "sconce vanity wall light bracket",
+      "hint": "Semicircle. The flat side sits on the wall."
+    },
+    {
+      "id": "fan",
+      "name": "Ceiling fan",
+      "category": "lighting",
+      "file": "fan.svg",
+      "wall": false,
+      "keywords": "ceiling fan paddle",
+      "hint": "Place it on the ceiling, in the room."
+    },
+    {
+      "id": "ucl",
+      "name": "Under cabinet lights",
+      "category": "lighting",
+      "file": "ucl.svg",
+      "wall": false,
+      "keywords": "ucl under cabinet light lights strip",
+      "hint": "Under cabinet lights. The letters stay upright."
+    },
+    {
+      "id": "pendant",
+      "name": "Pendant",
+      "category": "lighting",
+      "file": "pendant.svg",
+      "wall": false,
+      "keywords": "pendant hanging light fixture drop",
+      "hint": "Hanging light. The short stem is the drop, and it turns with the fixture."
+    },
+    {
+      "id": "exhaust",
+      "name": "Bath exhaust fan",
+      "category": "lighting",
+      "file": "exhaust.svg",
+      "wall": false,
+      "keywords": "exhaust bath fan ef bathroom ventilation",
+      "hint": "Bath exhaust fan. EF stays upright. This is not the ceiling fan."
+    },
+    {
+      "id": "smoke",
+      "name": "Smoke detector",
+      "category": "safety",
+      "file": "smoke.svg",
+      "wall": false,
+      "defaultColor": "#9f1d1d",
+      "keywords": "smoke detector sd alarm",
+      "hint": "SD stays upright. Place it on the ceiling."
+    },
+    {
+      "id": "co",
+      "name": "CO detector",
+      "category": "safety",
+      "file": "co.svg",
+      "wall": false,
+      "defaultColor": "#9f1d1d",
+      "keywords": "carbon monoxide co detector",
+      "hint": "CO stays upright. Place it per the detector layout."
+    },
+    {
+      "id": "coax",
+      "name": "COAX",
+      "category": "lowvoltage",
+      "file": "coax.svg",
+      "wall": true,
+      "defaultColor": "#1d4e89",
+      "keywords": "coax cable tv coaxial",
+      "hint": "The letters stay upright."
+    },
+    {
+      "id": "cat6",
+      "name": "CAT6",
+      "category": "lowvoltage",
+      "file": "cat6.svg",
+      "wall": true,
+      "defaultColor": "#1d4e89",
+      "keywords": "cat6 data ethernet",
+      "hint": "The letters stay upright."
+    },
+    {
+      "id": "coaxcat6",
+      "name": "COAX/CAT6",
+      "category": "lowvoltage",
+      "file": "coaxcat6.svg",
+      "wall": true,
+      "defaultColor": "#1d4e89",
+      "keywords": "coax cat6 combo cable",
+      "hint": "The letters stay upright."
+    },
+    {
+      "id": "smurf",
+      "name": "Smurf chase",
+      "category": "lowvoltage",
+      "file": "smurf.svg",
+      "wall": false,
+      "defaultColor": "#1d4e89",
+      "keywords": "smurf tube ent chase conduit",
+      "hint": "Marks a smurf-tube chase. The word stays upright."
+    },
+    {
+      "id": "data",
+      "name": "Data outlet",
+      "category": "lowvoltage",
+      "file": "data.svg",
+      "wall": true,
+      "defaultColor": "#1d4e89",
+      "keywords": "data cat6 jack low voltage ethernet phone",
+      "hint": "The letter D. It stays upright."
+    },
+    {
+      "id": "chime",
+      "name": "DB chime",
+      "category": "equipment",
+      "file": "chime.svg",
+      "wall": true,
+      "keywords": "doorbell chime db box",
+      "hint": "Box marked CHIME. The word stays upright."
+    },
+    {
+      "id": "meter",
+      "name": "Meter",
+      "category": "equipment",
+      "file": "meter.svg",
+      "wall": true,
+      "keywords": "meter base electric meter",
+      "hint": "Box marked METER. The word stays upright."
+    },
+    {
+      "id": "panel",
+      "name": "Panel",
+      "category": "equipment",
+      "file": "panel.svg",
+      "wall": true,
+      "keywords": "panelboard load center breaker electrical panel lp",
+      "hint": "Box marked PANEL. The word stays upright."
+    },
+    {
+      "id": "ac",
+      "name": "A/C",
+      "category": "equipment",
+      "file": "ac.svg",
+      "wall": true,
+      "keywords": "ac a/c air conditioner hvac condensing",
+      "hint": "Box marked A/C. The letters stay upright."
+    },
+    {
+      "id": "doorbell",
+      "name": "Doorbell",
+      "category": "equipment",
+      "file": "doorbell.svg",
+      "wall": true,
+      "keywords": "bell chime button doorbell",
+      "hint": "The bell stays upright."
+    }
+  ]
+}

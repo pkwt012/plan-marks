@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Plan Marks</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%23181b21'/%3E%3Ccircle cx='32' cy='30' r='14' fill='none' stroke='%23e2a23a' stroke-width='3'/%3E%3Cpath d='M32 44v10' stroke='%23e2a23a' stroke-width='3' stroke-linecap='round'/%3E%3Cpath d='M22 26h20M22 34h20' stroke='%23e2a23a' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <div id="app">
+    <header>
+      <div class="brand">
+        <svg viewBox="0 0 64 64" width="26" height="26" aria-hidden="true">
+          <rect width="64" height="64" rx="12" fill="#2a2418"/>
+          <circle cx="32" cy="28" r="13" fill="none" stroke="#e2a23a" stroke-width="3"/>
+          <path d="M32 41v12" stroke="#e2a23a" stroke-width="3" stroke-linecap="round"/>
+          <path d="M22 24h20M22 32h20" stroke="#e2a23a" stroke-width="3" stroke-linecap="round"/>
+        </svg>
+        <div>
+          <strong>Plan Marks</strong>
+          <span class="tag">on this computer</span>
+        </div>
+      </div>
+      <div id="docTitle" class="doc-title">No plan open</div>
+      <div id="pager" class="pager" hidden>
+        <button type="button" id="prevPage" title="Previous sheet (Page Up)">‹</button>
+        <select id="pageSelect" aria-label="Sheet"></select>
+        <button type="button" id="nextPage" title="Next sheet (Page Down)">›</button>
+      </div>
+      <div class="spacer"></div>
+      <div class="zoom">
+        <button type="button" id="zoomOut" title="Zoom out">−</button>
+        <button type="button" id="zoomLabel" title="Actual size (Ctrl+1)">100%</button>
+        <button type="button" id="zoomIn" title="Zoom in">+</button>
+        <button type="button" id="fitBtn" title="Fit sheet (Ctrl+0)">Fit</button>
+      </div>
+      <button type="button" id="openBtn" class="primary">Open PDF</button>
+      <button type="button" id="addBtn" title="Append every sheet from another PDF" disabled>Add sheets</button>
+      <button type="button" id="legendBtn" title="Append a sheet that lists every symbol and its description" disabled>Legend</button>
+      <button type="button" id="exportBtn" class="primary" disabled>Export PDF</button>
+      <button type="button" id="saveBtn" disabled title="Save marks as a JSON file (Ctrl+S)">Save</button>
+      <button type="button" id="loadBtn" title="Load a marks file">Load</button>
+      <button type="button" id="helpBtn" title="Shortcuts" class="icon">?</button>
+      <input id="filePdf" type="file" accept="application/pdf,.pdf" hidden>
+      <input id="fileAdd" type="file" accept="application/pdf,.pdf" hidden>
+      <input id="fileProj" type="file" accept="application/json,.json" hidden>
+    </header>
+
+    <aside>
+      <div class="filter">
+        <input id="filter" type="search" placeholder="Filter symbols — outlet, switch, light…" autocomplete="off">
+      </div>
+      <div id="palette"></div>
+      <div id="inspector">
+        <p id="toolHint" class="hint">Open a plan, pick a symbol, then click the sheet to place it.</p>
+        <div class="tool-row">
+          <button type="button" id="lineBtn" title="Draw a dashed line between lights. Click two points." disabled>Dashed line</button>
+          <button type="button" id="dropLegendBtn" title="Drop a legend of every symbol on this sheet" disabled>Drop legend</button>
+        </div>
+        <div class="field">
+          <div class="field-label">
+            <span id="sizeLabel">Size for new symbols</span>
+            <span id="sizeReadout" class="readout"></span>
+          </div>
+          <input id="sizeRange" type="range" min="10" max="160" step="1" value="28" aria-label="Symbol size">
+          <div class="presets">
+            <button type="button" data-size="18">Small</button>
+            <button type="button" data-size="28">Medium</button>
+            <button type="button" data-size="42">Large</button>
+            <button type="button" id="sizeOneFoot" disabled title="Make the symbol box one foot on the plan">1 ft</button>
+          </div>
+        </div>
+        <div class="calib">
+          <div class="row">
+            <button type="button" id="calibBtn">Calibrate</button>
+            <button type="button" id="calibClear" hidden>Clear scale</button>
+          </div>
+          <p id="calibState" class="hint">Scale not set.</p>
+          <div id="calibForm" class="row" hidden>
+            <label>Length
+              <input id="calibLen" type="number" min="0" step="any" value="10">
+            </label>
+            <select id="calibUnit" aria-label="Length unit">
+              <option value="ft">feet</option>
+              <option value="in">inches</option>
+              <option value="m">meters</option>
+            </select>
+            <button type="button" id="calibApply" class="primary">Apply</button>
+          </div>
+        </div>
+        <div id="selectionBox" hidden>
+          <label class="field" id="symbolField">Symbol
+            <select id="symbolSelect" aria-label="Change symbol"></select>
+          </label>
+          <div id="colors" class="colors" role="group" aria-label="Ink color"></div>
+          <div class="field" id="rotationField">
+            <span class="field-label"><span>Rotation</span></span>
+            <div class="row">
+              <button type="button" id="rotMinus" title="Rotate −15° (Shift+R)">−15°</button>
+              <input id="rotInput" type="number" step="1" aria-label="Rotation degrees" value="0">
+              <button type="button" id="rotPlus" title="Rotate +15° (R)">+15°</button>
+              <button type="button" id="rot90">90°</button>
+              <button type="button" id="rot0">0°</button>
+            </div>
+          </div>
+          <div class="row">
+            <button type="button" id="dupBtn" title="Duplicate (Ctrl+D)">Duplicate</button>
+            <button type="button" id="delBtn" class="danger" title="Delete (Del)">Delete</button>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <main>
+      <div id="empty">
+        <div class="card">
+          <h1>Mark a floor plan</h1>
+          <p>Open a PDF, click a symbol, then click the sheet. Drag to move, spin the handle to rotate, and export a new PDF with the symbols drawn on the plan. Dashed line connects lights. Drop legend puts a symbol key on the sheet.</p>
+          <div class="row center">
+            <button type="button" id="emptyOpen" class="primary">Open PDF</button>
+            <button type="button" id="sampleBtn">Try the sample plan</button>
+          </div>
+          <p class="fine">Wheel zooms. Right-drag or Space-drag pans. Nothing is uploaded.</p>
+        </div>
+      </div>
+      <div id="viewport" hidden>
+        <div id="scene">
+          <img id="pageImg" alt="Floor plan" draggable="false">
+          <div id="marks"></div>
+          <svg id="calibLayer"></svg>
+        </div>
+      </div>
+      <div id="veil" hidden>Opening plan…</div>
+      <div id="toast" hidden role="status"></div>
+    </main>
+
+    <footer>
+      <span id="statusLeft"></span>
+      <span id="statusMid"></span>
+      <span id="statusRight"></span>
+    </footer>
+  </div>
+
+  <dialog id="help">
+    <h2>How to mark a plan</h2>
+    <ul>
+      <li>Click a symbol, then click the sheet to place it. Click the symbol again to put the tool away.</li>
+      <li>Drag a mark to move it. Drag the amber handle to rotate it. Hold Shift to snap to 15°.</li>
+      <li>Letters stay upright. A duplex turns so its bars follow the wall.</li>
+      <li>Dashed line connects lights. Click the first point, then the next. Esc cancels the segment.</li>
+      <li>Drop legend places a key of every symbol on this sheet. Drag it where the crew can read it.</li>
+      <li>Legend in the header adds a sheet with every symbol, its name, and a short description.</li>
+      <li>Calibrate on a known dimension (the sample has a 10 ft line) so size can be read in feet.</li>
+      <li>Export PDF draws the symbols on top of the original sheet. The plan stays vector.</li>
+    </ul>
+    <h3>Shortcuts</h3>
+    <ul class="keys">
+      <li><span>Wheel</span> zoom</li>
+      <li><span>Right-drag or Space-drag</span> pan</li>
+      <li><span>R / Shift+R</span> rotate 15°</li>
+      <li><span>Delete</span> remove the selected mark</li>
+      <li><span>Ctrl+D</span> duplicate · Alt-drag also duplicates</li>
+      <li><span>Arrows</span> nudge · Shift nudges farther</li>
+      <li><span>Ctrl+Z / Ctrl+Shift+Z</span> undo / redo</li>
+      <li><span>Ctrl+S</span> save marks · <span>Ctrl+O</span> open PDF</li>
+      <li><span>Esc</span> cancel calibrate, tool, or selection</li>
+    </ul>
+    <form method="dialog"><button class="primary">Close</button></form>
+  </dialog>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
