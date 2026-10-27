@@ -1,11 +1,29 @@
 {
   "categories": [
-    {"id": "receptacles", "name": "Receptacles"},
-    {"id": "switches", "name": "Switches"},
-    {"id": "lighting", "name": "Lighting"},
-    {"id": "safety", "name": "Life safety"},
-    {"id": "lowvoltage", "name": "Low voltage"},
-    {"id": "equipment", "name": "Equipment"}
+    {
+      "id": "receptacles",
+      "name": "Receptacles"
+    },
+    {
+      "id": "switches",
+      "name": "Switches"
+    },
+    {
+      "id": "lighting",
+      "name": "Lighting"
+    },
+    {
+      "id": "safety",
+      "name": "Life safety"
+    },
+    {
+      "id": "lowvoltage",
+      "name": "Low voltage"
+    },
+    {
+      "id": "equipment",
+      "name": "Equipment"
+    }
   ],
   "symbols": [
     {
@@ -33,7 +51,7 @@
       "file": "gfci.svg",
       "wall": true,
       "keywords": "gfi gfci receptacle plug protected",
-      "hint": "Outlet marked GFI. The letters stay upright."
+      "hint": "Outlet marked GFI. Rotate it so the bars follow the wall."
     },
     {
       "id": "wp",
@@ -42,7 +60,7 @@
       "file": "wp.svg",
       "wall": true,
       "keywords": "weatherproof wr wp outdoor outlet",
-      "hint": "Outlet marked WP. The letters stay upright."
+      "hint": "Outlet marked WP. Rotate it so the bars follow the wall."
     },
     {
       "id": "usb",
@@ -51,7 +69,7 @@
       "file": "usb.svg",
       "wall": true,
       "keywords": "usb receptacle outlet",
-      "hint": "Outlet marked USB. The letters stay upright."
+      "hint": "Outlet marked USB. Rotate it so the bars follow the wall."
     },
     {
       "id": "ev",
@@ -60,7 +78,7 @@
       "file": "ev.svg",
       "wall": true,
       "keywords": "ev charger electric vehicle outlet",
-      "hint": "Outlet marked EV. The letters stay upright."
+      "hint": "Outlet marked EV. Rotate it so the bars follow the wall."
     },
     {
       "id": "outlet30",
@@ -69,7 +87,7 @@
       "file": "outlet30.svg",
       "wall": true,
       "keywords": "30 amp 240 volt outlet dryer range",
-      "hint": "Outlet marked 30A 240V. The letters stay upright."
+      "hint": "Outlet marked 30A 240V. Rotate it so the bars follow the wall."
     },
     {
       "id": "outlet50",
@@ -78,7 +96,7 @@
       "file": "outlet50.svg",
       "wall": true,
       "keywords": "50 amp 240 volt outlet range stove",
-      "hint": "Outlet marked 50A 240V. The letters stay upright."
+      "hint": "Outlet marked 50A 240V. Rotate it so the bars follow the wall."
     },
     {
       "id": "switch",
@@ -87,7 +105,7 @@
       "file": "switch.svg",
       "wall": true,
       "keywords": "single pole spst s switch",
-      "hint": "The letter S. It stays upright."
+      "hint": "The letter S. Rotate it to follow the wall."
     },
     {
       "id": "switch3",
@@ -96,7 +114,7 @@
       "file": "switch3.svg",
       "wall": true,
       "keywords": "3 way three-way s3 switch",
-      "hint": "S3 stays upright."
+      "hint": "S3. Rotate it to follow the wall."
     },
     {
       "id": "switch4",
@@ -105,7 +123,7 @@
       "file": "switch4.svg",
       "wall": true,
       "keywords": "4 way four-way s4 switch",
-      "hint": "S4 stays upright."
+      "hint": "S4. Rotate it to follow the wall."
     },
     {
       "id": "dimmer",
@@ -114,7 +132,7 @@
       "file": "dimmer.svg",
       "wall": true,
       "keywords": "dimmer slider switch sd",
-      "hint": "Switch marked D. It stays upright."
+      "hint": "Switch marked SD. Rotate it to follow the wall."
     },
     {
       "id": "timer",
@@ -123,7 +141,7 @@
       "file": "timer.svg",
       "wall": true,
       "keywords": "timer switch st time clock",
-      "hint": "Switch marked ST. It stays upright."
+      "hint": "Switch marked ST. Rotate it to follow the wall."
     },
     {
       "id": "ceiling",
@@ -168,7 +186,7 @@
       "file": "ucl.svg",
       "wall": false,
       "keywords": "ucl under cabinet light lights strip",
-      "hint": "Under cabinet lights. The letters stay upright."
+      "hint": "Under cabinet lights. Rotate the letters to follow the run."
     },
     {
       "id": "pendant",
@@ -186,7 +204,7 @@
       "file": "exhaust.svg",
       "wall": false,
       "keywords": "exhaust bath fan ef bathroom ventilation",
-      "hint": "Bath exhaust fan. EF stays upright. This is not the ceiling fan."
+      "hint": "Bath exhaust fan, marked EF. This is not the ceiling fan."
     },
     {
       "id": "smoke",
@@ -196,7 +214,7 @@
       "wall": false,
       "defaultColor": "#9f1d1d",
       "keywords": "smoke detector sd alarm",
-      "hint": "SD stays upright. Place it on the ceiling."
+      "hint": "Marked SD. Place it on the ceiling, and rotate it if you need to."
     },
     {
       "id": "co",
@@ -206,7 +224,7 @@
       "wall": false,
       "defaultColor": "#9f1d1d",
       "keywords": "carbon monoxide co detector",
-      "hint": "CO stays upright. Place it per the detector layout."
+      "hint": "Marked CO. Rotate it if you need to."
     },
     {
       "id": "coax",
@@ -216,7 +234,7 @@
       "wall": true,
       "defaultColor": "#1d4e89",
       "keywords": "coax cable tv coaxial",
-      "hint": "The letters stay upright."
+      "hint": "COAX. Rotate the letters to follow the wall."
     },
     {
       "id": "cat6",
@@ -226,7 +244,7 @@
       "wall": true,
       "defaultColor": "#1d4e89",
       "keywords": "cat6 data ethernet",
-      "hint": "The letters stay upright."
+      "hint": "CAT6. Rotate the letters to follow the wall."
     },
     {
       "id": "coaxcat6",
@@ -236,7 +254,7 @@
       "wall": true,
       "defaultColor": "#1d4e89",
       "keywords": "coax cat6 combo cable",
-      "hint": "The letters stay upright."
+      "hint": "COAX/CAT6. Rotate the letters to follow the wall."
     },
     {
       "id": "smurf",
@@ -246,7 +264,7 @@
       "wall": false,
       "defaultColor": "#1d4e89",
       "keywords": "smurf tube ent chase conduit",
-      "hint": "Marks a smurf-tube chase. The word stays upright."
+      "hint": "Marks a smurf-tube chase. Rotate the word if you need to."
     },
     {
       "id": "data",
@@ -256,7 +274,7 @@
       "wall": true,
       "defaultColor": "#1d4e89",
       "keywords": "data cat6 jack low voltage ethernet phone",
-      "hint": "The letter D. It stays upright."
+      "hint": "The letter D. Rotate it to follow the wall."
     },
     {
       "id": "chime",
@@ -265,7 +283,7 @@
       "file": "chime.svg",
       "wall": true,
       "keywords": "doorbell chime db box",
-      "hint": "Box marked CHIME. The word stays upright."
+      "hint": "Box marked CHIME. Rotate the box to follow the wall."
     },
     {
       "id": "meter",
@@ -274,7 +292,7 @@
       "file": "meter.svg",
       "wall": true,
       "keywords": "meter base electric meter",
-      "hint": "Box marked METER. The word stays upright."
+      "hint": "Box marked METER. Rotate the box to follow the wall."
     },
     {
       "id": "panel",
@@ -283,7 +301,7 @@
       "file": "panel.svg",
       "wall": true,
       "keywords": "panelboard load center breaker electrical panel lp",
-      "hint": "Box marked PANEL. The word stays upright."
+      "hint": "Box marked PANEL. Rotate the box to follow the wall."
     },
     {
       "id": "ac",
@@ -292,7 +310,7 @@
       "file": "ac.svg",
       "wall": true,
       "keywords": "ac a/c air conditioner hvac condensing",
-      "hint": "Box marked A/C. The letters stay upright."
+      "hint": "Box marked A/C. Rotate the box to follow the wall."
     },
     {
       "id": "doorbell",
@@ -301,7 +319,7 @@
       "file": "doorbell.svg",
       "wall": true,
       "keywords": "bell chime button doorbell",
-      "hint": "The bell stays upright."
+      "hint": "Bell button. Rotate it to follow the wall."
     }
   ]
 }

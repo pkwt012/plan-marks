@@ -34,6 +34,8 @@ const state = {
   calibDraft: null,
   tool: null,
   lineDraft: null,
+  arrowDraft: null,
+  noteSize: 12,
   undo: [],
   redo: [],
   panX: 24,
@@ -52,6 +54,9 @@ const state = {
 let library = { categories: [], symbols: [] };
 let symbolsById = {};
 let sizeUndoArmed = false;
+let noteUndoArmed = false;
+let openCategories = new Set();
+const LAYOUT_KEY = "planmarks.layout";
 
 const SVGNS = "http://www.w3.org/2000/svg";
 const $ = (id) => document.getElementById(id);
@@ -163,7 +168,7 @@ function applyTransform() {
   $("zoomLabel").textContent = pct + "%";
   const handle = document.querySelector(".mark.selected .handle");
   const p = selected();
-  if (handle && p && p.kind !== "line" && p.kind !== "legend") positionHandle(handle, p);
+  if (handle && isSymbol(p)) positionHandle(handle, p);
   refreshWireChrome();
   drawCalib();
 }
@@ -269,6 +274,8 @@ function updatePager() {
   $("addBtn").disabled = false;
   $("legendBtn").disabled = false;
   $("lineBtn").disabled = false;
+  $("noteBtn").disabled = false;
+  $("arrowBtn").disabled = false;
   $("dropLegendBtn").disabled = false;
 }
 
@@ -303,8 +310,30 @@ function goToPage(index) {
     state.lineDraft = null;
     toast("Dashed line cancelled because the sheet changed.");
   }
+  if (state.arrowDraft) {
+    state.arrowDraft = null;
+    toast("Arrow cancelled because the sheet changed.");
+  }
   showPage(index, { fit: refit });
   syncInspector();
+}
+
+function spinGroup(svg) {
+  for (const child of svg.children) {
+    if (child.classList.contains("spin")) return child;
+  }
+  const spin = svg.ownerDocument.createElementNS(SVGNS, "g");
+  spin.setAttribute("class", "spin");
+  while (svg.firstChild) spin.appendChild(svg.firstChild);
+  svg.appendChild(spin);
+  return spin;
+}
+
+function setSpin(svg, rotation) {
+  const spin = spinGroup(svg);
+  const deg = Number(rotation) || 0;
+  if (deg) spin.setAttribute("transform", `rotate(${deg} 50 50)`);
+  else spin.removeAttribute("transform");
 }
 
 function paintSvg(symbolId, rotation, color) {
@@ -314,8 +343,7 @@ function paintSvg(symbolId, rotation, color) {
   const doc = new DOMParser().parseFromString(colored, "image/svg+xml");
   const node = doc.querySelector("svg");
   if (!node || doc.querySelector("parsererror")) return null;
-  const rot = node.querySelector(".rot");
-  if (rot && rotation) rot.setAttribute("transform", `rotate(${rotation} 50 50)`);
+  setSpin(node, rotation);
   return node;
 }
 
@@ -357,7 +385,47 @@ function markElement(p) {
 }
 
 function isSymbol(p) {
-  return p && p.kind !== "line" && p.kind !== "legend";
+  return Boolean(p && (p.kind === "symbol" || (!p.kind && p.symbolId)));
+}
+
+function isSegment(p) {
+  return Boolean(p && (p.kind === "line" || p.kind === "arrow"));
+}
+
+function arrowParts(p) {
+  const dx = p.x2 - p.x1;
+  const dy = p.y2 - p.y1;
+  const length = Math.hypot(dx, dy);
+  if (length < 0.5) {
+    return { length, x1: p.x1, y1: p.y1, x2: p.x2, y2: p.y2, tipX: p.x2, tipY: p.y2 };
+  }
+  const ux = dx / length;
+  const uy = dy / length;
+  const head = Math.min(11, length * 0.45);
+  const wing = head * (4.2 / 11);
+  const bx = p.x2 - ux * head;
+  const by = p.y2 - uy * head;
+  return {
+    length,
+    x1: p.x1,
+    y1: p.y1,
+    x2: bx,
+    y2: by,
+    tipX: p.x2,
+    tipY: p.y2,
+    leftX: bx - uy * wing,
+    leftY: by + ux * wing,
+    rightX: bx + uy * wing,
+    rightY: by - ux * wing,
+  };
+}
+
+function cleanNote(text) {
+  let value = String(text || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  if (value.length > 500) value = value.slice(0, 500);
+  const lines = value.split("\n");
+  if (lines.length > 16) value = lines.slice(0, 16).join("\n");
+  return value;
 }
 
 function legendBox(width) {
@@ -442,7 +510,7 @@ function wireLayer(id) {
   return svg;
 }
 
-function addWireLine(parent, p, className, color, width, events) {
+function addWireLine(parent, p, className, color, width, events, dashed) {
   const line = document.createElementNS(SVGNS, "line");
   line.setAttribute("class", className);
   line.setAttribute("x1", p.x1);
@@ -451,7 +519,7 @@ function addWireLine(parent, p, className, color, width, events) {
   line.setAttribute("y2", p.y2);
   line.setAttribute("stroke", color);
   line.setAttribute("stroke-width", String(width));
-  line.setAttribute("stroke-dasharray", "8 6");
+  if (dashed) line.setAttribute("stroke-dasharray", "8 6");
   line.setAttribute("stroke-linecap", "butt");
   line.setAttribute("fill", "none");
   if (events) line.setAttribute("pointer-events", events);
@@ -459,17 +527,36 @@ function addWireLine(parent, p, className, color, width, events) {
   return line;
 }
 
+function addArrowHead(parent, p, color, events) {
+  const head = arrowParts(p);
+  if (!head.leftX && head.leftX !== 0) return;
+  if (head.length < 0.5) return;
+  const poly = document.createElementNS(SVGNS, "polygon");
+  poly.setAttribute("class", "arrow-head");
+  poly.setAttribute("points", `${head.tipX},${head.tipY} ${head.leftX},${head.leftY} ${head.rightX},${head.rightY}`);
+  poly.setAttribute("fill", color);
+  poly.setAttribute("stroke", color);
+  poly.setAttribute("stroke-width", "0.6");
+  poly.setAttribute("stroke-linejoin", "round");
+  poly.setAttribute("pointer-events", events || "all");
+  parent.appendChild(poly);
+}
+
 function wireGroup(p, draft) {
   const g = document.createElementNS(SVGNS, "g");
   g.setAttribute("class", draft ? "wire wire-draft" : "wire");
   if (!draft) g.dataset.id = p.id;
   const metrics = wireMetrics();
+  const arrow = p.kind === "arrow";
+  const color = p.color || state.ink || "#141414";
+  const shaft = arrow ? arrowParts(p) : p;
   if (!draft && p.id === state.selectedId) {
-    addWireLine(g, p, "wire-halo", "#e2a23a", 3.4, "none");
+    addWireLine(g, p, "wire-halo", "#e2a23a", 3.4, "none", !arrow);
   }
-  addWireLine(g, p, "wire-ink", p.color || state.ink || "#141414", 1.35, "none");
+  addWireLine(g, shaft, "wire-ink", color, 1.35, "none", !arrow);
+  if (arrow) addArrowHead(g, p, color, draft ? "none" : "all");
   if (!draft) {
-    const hit = addWireLine(g, p, "wire-hit", "#141414", metrics.hit, "stroke");
+    const hit = addWireLine(g, p, "wire-hit", "#141414", metrics.hit, "stroke", false);
     hit.setAttribute("stroke-opacity", "0.01");
   }
   return g;
@@ -506,12 +593,15 @@ function renderWires() {
   handles.replaceChildren();
   if (!currentPage()) return;
   for (const p of state.placements) {
-    if (p.kind !== "line" || p.page !== state.pageIndex) continue;
+    if (!isSegment(p) || p.page !== state.pageIndex) continue;
     wires.appendChild(wireGroup(p, false));
     if (p.id === state.selectedId) handles.appendChild(handleGroup(p));
   }
   if (state.lineDraft && state.lineDraft.page === state.pageIndex) {
     wires.appendChild(wireGroup(state.lineDraft, true));
+  }
+  if (state.arrowDraft && state.arrowDraft.page === state.pageIndex) {
+    wires.appendChild(wireGroup(state.arrowDraft, true));
   }
 }
 
@@ -531,8 +621,10 @@ function renderMarks() {
   marksLayer.innerHTML = "";
   if (!state.doc) return;
   for (const p of state.placements) {
-    if (p.page !== state.pageIndex || p.kind === "line") continue;
-    marksLayer.appendChild(p.kind === "legend" ? legendElement(p) : markElement(p));
+    if (p.page !== state.pageIndex || isSegment(p)) continue;
+    if (p.kind === "legend") marksLayer.appendChild(legendElement(p));
+    else if (p.kind === "note") marksLayer.appendChild(noteElement(p));
+    else marksLayer.appendChild(markElement(p));
   }
   renderWires();
   drawCalib();
@@ -544,14 +636,25 @@ function updateLine(p) {
     renderWires();
     return;
   }
+  const arrow = p.kind === "arrow";
+  const shaft = arrow ? arrowParts(p) : p;
+  const color = p.color || "#141414";
   for (const line of g.querySelectorAll("line")) {
-    line.setAttribute("x1", p.x1);
-    line.setAttribute("y1", p.y1);
-    line.setAttribute("x2", p.x2);
-    line.setAttribute("y2", p.y2);
+    const useShaft = arrow && line.classList.contains("wire-ink");
+    const src = useShaft ? shaft : p;
+    line.setAttribute("x1", src.x1);
+    line.setAttribute("y1", src.y1);
+    line.setAttribute("x2", src.x2);
+    line.setAttribute("y2", src.y2);
   }
   const ink = g.querySelector(".wire-ink");
-  if (ink) ink.setAttribute("stroke", p.color || "#141414");
+  if (ink) ink.setAttribute("stroke", color);
+  const head = g.querySelector(".arrow-head");
+  if (head && arrow && shaft.leftX !== undefined) {
+    head.setAttribute("points", `${shaft.tipX},${shaft.tipY} ${shaft.leftX},${shaft.leftY} ${shaft.rightX},${shaft.rightY}`);
+    head.setAttribute("fill", color);
+    head.setAttribute("stroke", color);
+  }
   const ends = marksLayer.querySelector(`[data-ends="${CSS.escape(p.id)}"]`);
   if (ends) {
     const first = ends.querySelector('[data-end="1"]');
@@ -580,13 +683,62 @@ function updateLegend(p) {
   el.style.top = p.y + "px";
 }
 
+function noteElement(p) {
+  const el = document.createElement("div");
+  el.className = "mark note" + (p.id === state.selectedId ? " selected" : "");
+  el.dataset.id = p.id;
+  el.style.left = p.x + "px";
+  el.style.top = p.y + "px";
+  el.style.fontSize = p.size + "px";
+  el.style.color = p.color || "#141414";
+  const text = document.createElement("div");
+  text.className = "note-text";
+  const body = p.text || "";
+  if (body.trim()) text.textContent = body;
+  else {
+    text.textContent = "Note";
+    text.classList.add("placeholder");
+  }
+  el.appendChild(text);
+  return el;
+}
+
+function updateNote(p) {
+  const el = marksLayer.querySelector(`.mark[data-id="${CSS.escape(p.id)}"]`);
+  if (!el || !el.classList.contains("note")) {
+    renderMarks();
+    return;
+  }
+  el.style.left = p.x + "px";
+  el.style.top = p.y + "px";
+  el.style.fontSize = p.size + "px";
+  el.style.color = p.color || "#141414";
+  const text = el.querySelector(".note-text");
+  if (!text) {
+    renderMarks();
+    return;
+  }
+  const body = p.text || "";
+  if (body.trim()) {
+    text.textContent = body;
+    text.classList.remove("placeholder");
+  } else {
+    text.textContent = "Note";
+    text.classList.add("placeholder");
+  }
+}
+
 function updateMark(p) {
-  if (p.kind === "line") {
+  if (isSegment(p)) {
     updateLine(p);
     return;
   }
   if (p.kind === "legend") {
     updateLegend(p);
+    return;
+  }
+  if (p.kind === "note") {
+    updateNote(p);
     return;
   }
   const el = marksLayer.querySelector(`.mark[data-id="${CSS.escape(p.id)}"]`);
@@ -595,11 +747,8 @@ function updateMark(p) {
     return;
   }
   positionMark(el, p);
-  const rot = el.querySelector(".rot");
-  if (rot) {
-    if (p.rotation) rot.setAttribute("transform", `rotate(${p.rotation} 50 50)`);
-    else rot.removeAttribute("transform");
-  }
+  const svg = el.querySelector("svg");
+  if (svg) setSpin(svg, p.rotation);
   const handle = el.querySelector(".handle");
   if (handle) positionHandle(handle, p);
   const rotInput = $("rotInput");
@@ -734,20 +883,45 @@ function applyProject(proj, { quiet = false } = {}) {
       continue;
     }
     const color = /^#[0-9a-fA-F]{6}$/.test(item.color || "") ? item.color.toLowerCase() : "#141414";
-    if (item.kind === "line") {
+    if (item.kind === "line" || item.kind === "arrow") {
       const coords = [item.x1, item.y1, item.x2, item.y2].map(Number);
       if (coords.some((n) => !Number.isFinite(n))) {
         skipped += 1;
         continue;
       }
+      if (item.kind === "arrow" && Math.hypot(coords[2] - coords[0], coords[3] - coords[1]) < 4) {
+        skipped += 1;
+        continue;
+      }
       placements.push({
         id: item.id || uid(),
-        kind: "line",
+        kind: item.kind,
         page,
         x1: coords[0],
         y1: coords[1],
         x2: coords[2],
         y2: coords[3],
+        color,
+      });
+      continue;
+    }
+    if (item.kind === "note") {
+      const x = Number(item.x);
+      const y = Number(item.y);
+      const size = Number(item.size);
+      const text = cleanNote(item.text);
+      if (![x, y, size].every((n) => Number.isFinite(n)) || !text.trim()) {
+        skipped += 1;
+        continue;
+      }
+      placements.push({
+        id: item.id || uid(),
+        kind: "note",
+        page,
+        x,
+        y,
+        text,
+        size: clamp(size, 8, 36),
         color,
       });
       continue;
@@ -815,9 +989,17 @@ function renderPalette() {
       return hay.includes(query);
     });
     if (!items.length) continue;
-    const section = document.createElement("section");
-    const title = document.createElement("h2");
-    title.textContent = cat.name;
+    const section = document.createElement("details");
+    section.className = "cat";
+    section.open = Boolean(query) || openCategories.has(cat.id);
+    const title = document.createElement("summary");
+    const chev = document.createElement("span");
+    chev.className = "chev";
+    chev.setAttribute("aria-hidden", "true");
+    chev.textContent = "▸";
+    const label = document.createElement("span");
+    label.textContent = cat.name;
+    title.append(chev, label);
     section.appendChild(title);
     const grid = document.createElement("div");
     grid.className = "grid";
@@ -838,6 +1020,12 @@ function renderPalette() {
       grid.appendChild(btn);
     }
     section.appendChild(grid);
+    section.addEventListener("toggle", () => {
+      if (($("filter").value || "").trim()) return;
+      if (section.open) openCategories.add(cat.id);
+      else openCategories.delete(cat.id);
+      saveLayout();
+    });
     palette.appendChild(section);
   }
   if (!palette.children.length) {
@@ -880,6 +1068,7 @@ function buildColors() {
 function clearDrawingTools() {
   state.tool = null;
   state.lineDraft = null;
+  state.arrowDraft = null;
   state.calibStep = 0;
   state.calibDraft = null;
 }
@@ -887,6 +1076,10 @@ function clearDrawingTools() {
 function toggleArm(id) {
   clearDrawingTools();
   state.armedId = state.armedId === id ? null : id;
+  if (state.armedId && symbolsById[id]) {
+    openCategories.add(symbolsById[id].category);
+    saveLayout();
+  }
   renderPalette();
   syncInspector();
   renderMarks();
@@ -924,9 +1117,14 @@ function syncInspector() {
   else if (state.calibStep === 3) hint.textContent = "Enter how long that distance is, then Apply.";
   else if (state.tool === "line" && state.lineDraft) hint.textContent = "Click the next point. Esc cancels this segment.";
   else if (state.tool === "line") hint.textContent = "Click the first point of a dashed line. Esc puts the tool away.";
+  else if (state.tool === "arrow" && state.arrowDraft) hint.textContent = "Click where the arrow points. Esc cancels this arrow.";
+  else if (state.tool === "arrow") hint.textContent = "Click the first point, then click where the arrow points. Esc puts the tool away.";
+  else if (state.tool === "note") hint.textContent = "Click the sheet, then type the note. Esc puts the tool away.";
   else if (state.tool === "legend") hint.textContent = "Click the sheet to drop a legend of every symbol.";
   else if (sym) hint.textContent = sym.hint || `Click the plan to place ${sym.name}. Esc puts the tool away.`;
   else if (p && p.kind === "line") hint.textContent = "Drag the line to move it. Drag an amber end to change it.";
+  else if (p && p.kind === "arrow") hint.textContent = "Drag the arrow to move it. Drag an amber end to change it.";
+  else if (p && p.kind === "note") hint.textContent = "Edit the note here. Drag it on the sheet.";
   else if (p && p.kind === "legend") hint.textContent = "Drag the legend. The slider changes how wide it is.";
   else if (p) hint.textContent = symbolsById[p.symbolId] ? symbolsById[p.symbolId].hint : "Drag to move. Drag the handle to rotate.";
   else hint.textContent = state.doc ? "Pick a symbol, then click the sheet." : "Open a plan, pick a symbol, then click the sheet to place it.";
@@ -944,6 +1142,19 @@ function syncInspector() {
     range.disabled = true;
     $("sizeLabel").textContent = "Dashed line";
     $("sizeReadout").textContent = sizeText(Math.hypot(p.x2 - p.x1, p.y2 - p.y1));
+  } else if (p && p.kind === "arrow") {
+    range.disabled = true;
+    $("sizeLabel").textContent = "Arrow";
+    $("sizeReadout").textContent = sizeText(Math.hypot(p.x2 - p.x1, p.y2 - p.y1));
+  } else if ((p && p.kind === "note") || (!p && state.tool === "note")) {
+    range.disabled = false;
+    range.min = "8";
+    range.max = "36";
+    range.step = "1";
+    const noteSize = p ? p.size : state.noteSize;
+    if (document.activeElement !== range) range.value = String(Math.round(noteSize));
+    $("sizeLabel").textContent = p ? "Note size" : "Size for new notes";
+    $("sizeReadout").textContent = `${Math.round(noteSize)} pt`;
   } else {
     range.disabled = false;
     range.min = "10";
@@ -954,9 +1165,10 @@ function syncInspector() {
     $("sizeLabel").textContent = p ? "Selected size" : "Size for new symbols";
     $("sizeReadout").textContent = sizeText(activeSize);
   }
-  $("sizeOneFoot").disabled = !state.calibration || (p && !symbolLike);
+  const noteSizing = Boolean((p && p.kind === "note") || (!p && state.tool === "note"));
+  $("sizeOneFoot").disabled = !state.calibration || noteSizing || (p && !symbolLike);
   for (const btn of document.querySelectorAll(".presets [data-size]")) {
-    btn.disabled = Boolean(p && !symbolLike);
+    btn.disabled = noteSizing || Boolean(p && !symbolLike);
   }
 
   const calibState = $("calibState");
@@ -971,12 +1183,20 @@ function syncInspector() {
   $("calibBtn").textContent = state.calibStep ? "Cancel" : "Calibrate";
   $("lineBtn").classList.toggle("active", state.tool === "line");
   $("lineBtn").setAttribute("aria-pressed", state.tool === "line" ? "true" : "false");
+  $("arrowBtn").classList.toggle("active", state.tool === "arrow");
+  $("arrowBtn").setAttribute("aria-pressed", state.tool === "arrow" ? "true" : "false");
+  $("noteBtn").classList.toggle("active", state.tool === "note");
+  $("noteBtn").setAttribute("aria-pressed", state.tool === "note" ? "true" : "false");
   $("dropLegendBtn").classList.toggle("active", state.tool === "legend");
   $("dropLegendBtn").setAttribute("aria-pressed", state.tool === "legend" ? "true" : "false");
 
   $("selectionBox").hidden = !p;
   $("symbolField").hidden = !symbolLike;
+  $("noteField").hidden = !(p && p.kind === "note");
   $("rotationField").hidden = !symbolLike;
+  if (p && p.kind === "note" && document.activeElement !== $("noteText")) {
+    $("noteText").value = p.text || "";
+  }
   $("colors").hidden = Boolean(p && p.kind === "legend");
   if (symbolLike) {
     $("symbolSelect").value = p.symbolId;
@@ -991,7 +1211,22 @@ function syncInspector() {
 
 function setSize(pt, { undo = false } = {}) {
   const p = selected();
-  if (p && p.kind === "line") return;
+  if (p && (p.kind === "line" || p.kind === "arrow")) return;
+  if (p && p.kind === "note") {
+    pt = clamp(pt, 8, 36);
+    if (undo) pushUndo();
+    p.size = pt;
+    state.noteSize = pt;
+    updateMark(p);
+    syncInspector();
+    scheduleSave();
+    return;
+  }
+  if (!p && state.tool === "note") {
+    state.noteSize = clamp(pt, 8, 36);
+    syncInspector();
+    return;
+  }
   if (p && p.kind === "legend") {
     pt = clamp(pt, 120, 800);
     if (undo) pushUndo();
@@ -1017,13 +1252,15 @@ function applyColor(value) {
   state.ink = value;
   const ink = value || "#141414";
   if (state.lineDraft) state.lineDraft.color = ink;
-  if (p && p.kind === "line") p.color = ink;
+  if (state.arrowDraft) state.arrowDraft.color = ink;
+  if (p && (p.kind === "line" || p.kind === "arrow" || p.kind === "note")) p.color = ink;
   else if (p) {
     const sym = symbolsById[p.symbolId];
     p.color = value || (sym && sym.defaultColor) || "#141414";
   }
-  if (p && p.kind !== "line") renderMarks();
-  else if ((p && p.kind === "line") || state.lineDraft) renderWires();
+  if (p && p.kind === "note") updateNote(p);
+  else if (p && !isSegment(p)) renderMarks();
+  else if ((p && isSegment(p)) || state.lineDraft || state.arrowDraft) renderWires();
   syncInspector();
   scheduleSave();
 }
@@ -1039,7 +1276,7 @@ function bumpRotation(delta) {
 
 function duplicatePlacement(p, dx, dy) {
   const copy = { ...p, id: uid() };
-  if (p.kind === "line") {
+  if (isSegment(p)) {
     copy.x1 = p.x1 + dx;
     copy.y1 = p.y1 + dy;
     copy.x2 = p.x2 + dx;
@@ -1053,7 +1290,8 @@ function duplicatePlacement(p, dx, dy) {
 }
 
 function duplicateShift(p) {
-  if (p.kind === "line") return 16;
+  if (isSegment(p)) return 16;
+  if (p.kind === "note") return Math.max(18, p.size * 1.6);
   if (p.kind === "legend") return 24;
   return p.size * 0.35;
 }
@@ -1194,7 +1432,7 @@ function startPan(e) {
 }
 
 function placementOrigin(p) {
-  if (p.kind === "line") return { x1: p.x1, y1: p.y1, x2: p.x2, y2: p.y2 };
+  if (isSegment(p)) return { x1: p.x1, y1: p.y1, x2: p.x2, y2: p.y2 };
   return { x: p.x, y: p.y };
 }
 
@@ -1203,7 +1441,7 @@ function snapPoint(pt, excludeId) {
   let bestD = 14;
   for (const item of state.placements) {
     if (item.page !== state.pageIndex || item.id === excludeId) continue;
-    const points = item.kind === "line" ? [[item.x1, item.y1], [item.x2, item.y2]] : item.kind === "legend" ? [] : [[item.x, item.y]];
+    const points = isSegment(item) ? [[item.x1, item.y1], [item.x2, item.y2]] : item.kind === "legend" ? [] : [[item.x, item.y]];
     for (const [x, y] of points) {
       const dist = Math.hypot(pt.x - x, pt.y - y);
       if (dist < bestD) {
@@ -1219,42 +1457,81 @@ function onSheet(pt, page) {
   return pt.x >= -80 && pt.y >= -80 && pt.x <= page.width + 80 && pt.y <= page.height + 80;
 }
 
-function lineClick(pt) {
+function segmentClick(pt, kind) {
   const page = currentPage();
   if (!page || !onSheet(pt, page)) return;
+  const key = kind === "arrow" ? "arrowDraft" : "lineDraft";
   const snapped = snapPoint(pt);
-  if (!state.lineDraft) {
-    state.lineDraft = { page: state.pageIndex, x1: snapped.x, y1: snapped.y, x2: snapped.x, y2: snapped.y, color: state.ink || "#141414" };
+  const draft = state[key];
+  if (!draft) {
+    state[key] = {
+      kind,
+      page: state.pageIndex,
+      x1: snapped.x,
+      y1: snapped.y,
+      x2: snapped.x,
+      y2: snapped.y,
+      color: state.ink || "#141414",
+    };
     renderWires();
     syncInspector();
     setStatus();
     return;
   }
-  state.lineDraft.x2 = snapped.x;
-  state.lineDraft.y2 = snapped.y;
-  const length = Math.hypot(state.lineDraft.x2 - state.lineDraft.x1, state.lineDraft.y2 - state.lineDraft.y1);
+  draft.x2 = snapped.x;
+  draft.y2 = snapped.y;
+  const length = Math.hypot(draft.x2 - draft.x1, draft.y2 - draft.y1);
   if (length < 4) {
-    toast("That line is too short. Click a second point.");
+    toast(kind === "arrow" ? "That arrow is too short. Click where it points." : "That line is too short. Click a second point.");
     return;
   }
   pushUndo();
   const mark = {
     id: uid(),
-    kind: "line",
-    page: state.lineDraft.page,
-    x1: state.lineDraft.x1,
-    y1: state.lineDraft.y1,
-    x2: state.lineDraft.x2,
-    y2: state.lineDraft.y2,
-    color: state.lineDraft.color,
+    kind,
+    page: draft.page,
+    x1: draft.x1,
+    y1: draft.y1,
+    x2: draft.x2,
+    y2: draft.y2,
+    color: draft.color,
   };
   state.placements.push(mark);
   state.selectedId = mark.id;
-  state.lineDraft = null;
+  state[key] = null;
   renderMarks();
   syncInspector();
   scheduleSave();
   setStatus();
+}
+
+function placeNote(pt) {
+  const page = currentPage();
+  if (!page || !onSheet(pt, page)) return;
+  const snapped = snapPoint(pt);
+  pushUndo();
+  const mark = {
+    id: uid(),
+    kind: "note",
+    page: state.pageIndex,
+    x: snapped.x,
+    y: snapped.y,
+    text: "Note",
+    size: state.noteSize || 12,
+    color: state.ink || "#141414",
+  };
+  state.placements.push(mark);
+  state.selectedId = mark.id;
+  renderMarks();
+  syncInspector();
+  scheduleSave();
+  setStatus();
+  requestAnimationFrame(() => {
+    const box = $("noteText");
+    if (!box || selected() !== mark) return;
+    box.focus();
+    box.select();
+  });
 }
 
 function placeLegend(pt) {
@@ -1345,9 +1622,9 @@ function onPointerDown(e) {
   }
   if (e.button !== 0) return;
   const pt = clientToPdf(e.clientX, e.clientY);
-  if (state.tool === "line") {
+  if (state.tool === "line" || state.tool === "arrow") {
     e.preventDefault();
-    lineClick(pt);
+    segmentClick(pt, state.tool);
     return;
   }
   const end = e.target.closest(".wire-end");
@@ -1383,6 +1660,10 @@ function onPointerDown(e) {
     placeLegend(pt);
     return;
   }
+  if (state.tool === "note") {
+    placeNote(pt);
+    return;
+  }
   if (state.armedId) {
     placeAt(e.clientX, e.clientY);
     return;
@@ -1406,10 +1687,11 @@ function onPointerMove(e) {
       state.calibDraft.y2 = pt.y;
       drawCalib();
     }
-    if (state.tool === "line" && state.lineDraft && !state.drag) {
+    const draft = state.tool === "line" ? state.lineDraft : state.tool === "arrow" ? state.arrowDraft : null;
+    if (draft && !state.drag) {
       const snapped = snapPoint(pt);
-      state.lineDraft.x2 = snapped.x;
-      state.lineDraft.y2 = snapped.y;
+      draft.x2 = snapped.x;
+      draft.y2 = snapped.y;
       renderWires();
     }
   }
@@ -1423,19 +1705,21 @@ function onPointerMove(e) {
   }
   if (drag.type === "end") {
     const p = placement(drag.id);
-    if (!p || p.kind !== "line") return;
+    if (!isSegment(p)) return;
+    const pdf = snapPoint(clientToPdf(e.clientX, e.clientY), p.id);
+    const nextX1 = drag.end === "1" ? pdf.x : p.x1;
+    const nextY1 = drag.end === "1" ? pdf.y : p.y1;
+    const nextX2 = drag.end === "1" ? p.x2 : pdf.x;
+    const nextY2 = drag.end === "1" ? p.y2 : pdf.y;
+    if (p.kind === "arrow" && Math.hypot(nextX2 - nextX1, nextY2 - nextY1) < 4) return;
     if (drag.undo) {
       pushUndo();
       drag.undo = false;
     }
-    const pdf = snapPoint(clientToPdf(e.clientX, e.clientY), p.id);
-    if (drag.end === "1") {
-      p.x1 = pdf.x;
-      p.y1 = pdf.y;
-    } else {
-      p.x2 = pdf.x;
-      p.y2 = pdf.y;
-    }
+    p.x1 = nextX1;
+    p.y1 = nextY1;
+    p.x2 = nextX2;
+    p.y2 = nextY2;
     drag.moved = true;
     updateLine(p);
     return;
@@ -1452,7 +1736,7 @@ function onPointerMove(e) {
       drag.undo = false;
     }
     drag.moved = true;
-    if (p.kind === "line") {
+    if (isSegment(p)) {
       p.x1 = drag.origin.x1 + dx;
       p.y1 = drag.origin.y1 + dy;
       p.x2 = drag.origin.x2 + dx;
@@ -1466,7 +1750,7 @@ function onPointerMove(e) {
   }
   if (drag.type === "rotate") {
     const p = placement(drag.id);
-    if (!p) return;
+    if (!isSymbol(p)) return;
     if (drag.undo) {
       pushUndo();
       drag.undo = false;
@@ -1487,7 +1771,7 @@ function onPointerUp() {
     const p = placement(drag.id);
     if (p) {
       const shift = duplicateShift(p);
-      if (p.kind === "line") {
+      if (isSegment(p)) {
         p.x1 += shift;
         p.y1 += shift;
         p.x2 += shift;
@@ -1513,11 +1797,16 @@ function setStatus() {
     else if (state.calibStep === 3) left = "Enter that length, then Apply";
     else if (state.tool === "line" && state.lineDraft) left = "Dashed line: click the next point. Esc cancels this segment.";
     else if (state.tool === "line") left = "Dashed line: click the first point. Esc puts the tool away.";
+    else if (state.tool === "arrow" && state.arrowDraft) left = "Arrow: click where it points. Esc cancels this arrow.";
+    else if (state.tool === "arrow") left = "Arrow: click the first point, then where it points.";
+    else if (state.tool === "note") left = "Note: click the sheet, then type. Esc puts the tool away.";
     else if (state.tool === "legend") left = "Click the sheet to drop the legend.";
     else if (state.armedId) {
       const sym = symbolsById[state.armedId];
       left = `Placing ${sym ? sym.name : "symbol"}. Click the plan. Esc cancels.`;
     } else if (selected() && selected().kind === "line") left = "Drag the line to move it. Drag an end to reshape it.";
+    else if (selected() && selected().kind === "arrow") left = "Drag the arrow to move it. Drag an end to reshape it.";
+    else if (selected() && selected().kind === "note") left = "Edit the note in the side panel. Drag it on the sheet.";
     else if (selected() && selected().kind === "legend") left = "Drag the legend. The slider changes its width.";
     else if (selected()) left = "Drag to move. Drag the amber handle to rotate.";
     else left = "Pick a symbol, then click the plan.";
@@ -1559,6 +1848,7 @@ async function openPdfBytes(buf, filename, { append = false } = {}) {
     state.armedId = null;
     state.tool = null;
     state.lineDraft = null;
+    state.arrowDraft = null;
     state.calibration = null;
     state.calibStep = 0;
     state.calibDraft = null;
@@ -1704,8 +1994,9 @@ function onKeyDown(e) {
   }
   if (e.key === "Escape") {
     if (state.calibStep) cancelCalib();
-    else if (state.lineDraft) {
+    else if (state.lineDraft || state.arrowDraft) {
       state.lineDraft = null;
+      state.arrowDraft = null;
       renderWires();
       syncInspector();
       setStatus();
@@ -1803,7 +2094,7 @@ function onKeyDown(e) {
     const step = e.shiftKey ? 8 : 1;
     const dx = nudge[e.key][0] * step;
     const dy = nudge[e.key][1] * step;
-    if (p.kind === "line") {
+    if (isSegment(p)) {
       p.x1 += dx;
       p.y1 += dy;
       p.x2 += dx;
@@ -1831,7 +2122,25 @@ function bind() {
   $("addBtn").addEventListener("click", () => $("fileAdd").click());
   $("legendBtn").addEventListener("click", () => addLegend());
   $("lineBtn").addEventListener("click", () => setTool("line"));
+  $("arrowBtn").addEventListener("click", () => setTool("arrow"));
+  $("noteBtn").addEventListener("click", () => setTool("note"));
   $("dropLegendBtn").addEventListener("click", () => setTool("legend"));
+  $("noteText").addEventListener("focus", () => {
+    noteUndoArmed = true;
+  });
+  $("noteText").addEventListener("input", () => {
+    const p = selected();
+    if (!p || p.kind !== "note") return;
+    if (noteUndoArmed) {
+      pushUndo();
+      noteUndoArmed = false;
+    }
+    const next = cleanNote($("noteText").value);
+    if (next !== $("noteText").value) $("noteText").value = next;
+    p.text = next;
+    updateNote(p);
+    scheduleSave();
+  });
   $("exportBtn").addEventListener("click", () => exportPdf());
   $("saveBtn").addEventListener("click", () => saveProject());
   $("loadBtn").addEventListener("click", () => $("fileProj").click());
@@ -1888,6 +2197,7 @@ function bind() {
       state.armedId = null;
       state.tool = null;
       state.lineDraft = null;
+      state.arrowDraft = null;
       state.calibStep = 1;
       state.calibDraft = null;
       renderPalette();
@@ -1956,6 +2266,7 @@ function bind() {
   window.addEventListener("pointercancel", onPointerUp);
   window.addEventListener("keydown", onKeyDown);
   window.addEventListener("keyup", onKeyUp);
+  bindSplitters();
   window.addEventListener("blur", () => {
     state.space = false;
     viewport.classList.remove("panning");
@@ -1985,7 +2296,128 @@ function bind() {
   });
 }
 
+function readLen(name, fallback) {
+  const n = parseFloat(getComputedStyle(document.documentElement).getPropertyValue(name));
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function setLen(name, value, min, max) {
+  const next = clamp(value, min, max);
+  document.documentElement.style.setProperty(name, next + "px");
+  return next;
+}
+
+function loadLayout() {
+  try {
+    const data = JSON.parse(localStorage.getItem(LAYOUT_KEY) || "{}");
+    if (Array.isArray(data.open)) openCategories = new Set(data.open.filter((id) => typeof id === "string"));
+    if (data.sideWidth) setLen("--side-width", data.sideWidth, 220, 560);
+    if (data.toolsHeight) setLen("--tools-height", data.toolsHeight, 140, 720);
+    if (data.toolsWidth) setLen("--tools-width", data.toolsWidth, 180, 480);
+  } catch (_err) {
+    /* keep the built-in sizes */
+  }
+}
+
+function saveLayout() {
+  const data = {
+    open: [...openCategories],
+    sideWidth: readLen("--side-width", 300),
+    toolsHeight: readLen("--tools-height", 340),
+    toolsWidth: readLen("--tools-width", 260),
+  };
+  try {
+    localStorage.setItem(LAYOUT_KEY, JSON.stringify(data));
+  } catch (_err) {
+    /* private mode can refuse storage */
+  }
+}
+
+function panelAxis() {
+  return window.matchMedia("(max-width: 860px) and (min-width: 561px)").matches ? "x" : "y";
+}
+
+function dragSplitter(el, apply) {
+  el.addEventListener("pointerdown", (e) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const axis = apply.axis ? apply.axis() : "y";
+    const start = { x: e.clientX, y: e.clientY, ...apply.start() };
+    el.classList.add("dragging");
+    document.body.classList.add(axis === "x" ? "col-resize" : "row-resize");
+    const move = (ev) => apply.move(ev.clientX - start.x, ev.clientY - start.y, start);
+    const up = () => {
+      el.classList.remove("dragging");
+      document.body.classList.remove("col-resize", "row-resize");
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      saveLayout();
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  });
+  el.addEventListener("keydown", (e) => {
+    const step = e.shiftKey ? 24 : 12;
+    const key = e.key;
+    if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(key)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const dir = key === "ArrowLeft" || key === "ArrowUp" ? -step : step;
+    apply.nudge(dir, key);
+    saveLayout();
+  });
+  el.addEventListener("dblclick", () => {
+    apply.reset();
+    saveLayout();
+  });
+}
+
+function bindSplitters() {
+  const aside = document.querySelector("aside");
+  dragSplitter($("panelSplit"), {
+    axis: panelAxis,
+    start() {
+      return panelAxis() === "x"
+        ? { size: readLen("--tools-width", 260) }
+        : { size: readLen("--tools-height", 340) };
+    },
+    move(dx, dy, start) {
+      if (panelAxis() === "x") {
+        const max = Math.max(180, aside.clientWidth - 160);
+        setLen("--tools-width", start.size - dx, 180, Math.min(480, max));
+      } else {
+        const max = Math.max(140, aside.clientHeight - 100);
+        setLen("--tools-height", start.size - dy, 140, Math.min(720, max));
+      }
+    },
+    nudge(dir) {
+      if (panelAxis() === "x") setLen("--tools-width", readLen("--tools-width", 260) - dir, 180, 480);
+      else setLen("--tools-height", readLen("--tools-height", 340) - dir, 140, 720);
+    },
+    reset() {
+      document.documentElement.style.removeProperty("--tools-height");
+      document.documentElement.style.removeProperty("--tools-width");
+    },
+  });
+  dragSplitter($("sideSplit"), {
+    axis: () => "x",
+    start: () => ({ size: readLen("--side-width", 300) }),
+    move(dx, _dy, start) {
+      const max = Math.min(560, window.innerWidth - 320);
+      setLen("--side-width", start.size + dx, 220, Math.max(220, max));
+    },
+    nudge(dir, key) {
+      if (key === "ArrowUp" || key === "ArrowDown") return;
+      setLen("--side-width", readLen("--side-width", 300) + dir, 220, 560);
+    },
+    reset() {
+      document.documentElement.style.removeProperty("--side-width");
+    },
+  });
+}
+
 async function init() {
+  loadLayout();
   const res = await fetch("/api/symbols");
   if (!res.ok) {
     toast("Could not load the symbol library.");

@@ -24,17 +24,18 @@ def project_root() -> Path:
 ROOT = project_root()
 SYMBOL_DIR = ROOT / "symbols"
 
-_ROT_TAG = re.compile(r'(<g\b[^>]*\bclass="[^"]*\brot\b[^"]*"[^>]*)(>)')
 _UNSAFE = ("<script", "<foreignobject", "javascript:", "<iframe", "<embed", "onload=", "onclick=")
 _VIEWBOX = re.compile(r"""viewBox\s*=\s*["']0 0 100 100["']""")
 _HEX = re.compile(r"^#[0-9a-fA-F]{6}$")
+_SVG_OPEN = re.compile(r"<svg\b[^>]*>", re.IGNORECASE)
 
 
 def prepare_svg(svg: str, rotation: float, color: str) -> str:
-    """Return SVG with the rotating group turned and ink recolored.
+    """Return SVG with the whole symbol turned and ink recolored.
 
-    Text and other nodes outside class="rot" stay upright. Ink is the literal
-    color #141414 in the source files; white knockout shapes are left alone.
+    Rotation is around the viewBox center, so letters turn with the drawing.
+    Ink is the literal color #141414 in the source files; white knockout
+    shapes are left alone.
     """
     if not _HEX.fullmatch(color or ""):
         raise ValueError(f"bad color {color!r}")
@@ -43,20 +44,13 @@ def prepare_svg(svg: str, rotation: float, color: str) -> str:
     rot = float(rotation) % 360
     if rot < 0.05 or rot > 359.95:
         return out
-    transform = f"rotate({rot:.2f} 50 50)"
-
-    def repl(match: re.Match[str]) -> str:
-        tag, end = match.group(1), match.group(2)
-        if 'transform="' in tag:
-            tag = tag.replace('transform="', f'transform="{transform} ', 1)
-        else:
-            tag += f' transform="{transform}"'
-        return tag + end
-
-    updated, count = _ROT_TAG.subn(repl, out, count=1)
-    if count != 1:
+    opened = _SVG_OPEN.search(out)
+    close = out.rfind("</svg>")
+    if not opened or close < opened.end():
         return out
-    return updated
+    inner = out[opened.end():close]
+    wrapped = f'<g class="spin" transform="rotate({rot:.2f} 50 50)">{inner}</g>'
+    return out[: opened.end()] + wrapped + out[close:]
 
 
 def _check_svg(svg: str, name: str) -> None:
@@ -97,8 +91,6 @@ def load_symbols(folder: Path | None = None) -> dict:
             raise ValueError(f"missing symbol file: {filename}")
         svg = path.read_text(encoding="utf-8")
         _check_svg(svg, filename)
-        if not re.search(r'class="[^"]*\brot\b', svg):
-            print(f"warning: {filename} has no class=\"rot\" group; it will not rotate")
         color = entry.get("defaultColor") or INK
         if not _HEX.fullmatch(color):
             raise ValueError(f"{sid} has a bad defaultColor")

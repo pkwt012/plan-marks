@@ -66,15 +66,18 @@ jobs:
           path: PlanMarks-Windows.zip
 
       - name: Publish the download
+        if: "${{ github.event_name == 'push' && contains(github.event.head_commit.message, 'Release Plan Marks 1.1') }}"
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: windows-${{ github.run_number }}
-          name: Plan Marks for Windows
+          tag_name: v1.1
+          name: Plan Marks 1.1
           make_latest: "true"
           files: PlanMarks-Windows.zip
           body: |
-            Unzip the folder, then double-click PlanMarks.exe.
+            Plan Marks 1.1. Unzip the folder, then double-click PlanMarks.exe.
             Leave the small Plan Marks window open while you work. Close it to quit.
             Keep PlanMarks.exe and the _internal folder together.
             Your PDFs stay on this computer.
             If Windows says it protected your PC, choose More info, then Run anyway.
+
+            This version adds notes and arrows, rotates the whole symbol, and lets you resize the side panels and open each symbol category.

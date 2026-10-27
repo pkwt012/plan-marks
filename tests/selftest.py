@@ -119,7 +119,10 @@ def main():
     check("rotation baked", "rotate(90.00 50 50)" in rotated)
     check("color baked", "#c4271b" in rotated and "#141414" not in rotated)
     upright = prepare_svg(next(s["svg"] for s in lib["symbols"] if s["id"] == "switch3"), 90, "#141414")
-    check("label not rotated", upright.index('class="label"') > upright.index("rotate(90.00 50 50)"))
+    check(
+        "rotation wraps the symbol",
+        'class="spin"' in upright and upright.index('class="label"') > upright.index("rotate(90.00 50 50)"),
+    )
 
     extra = Path("/tmp/planmarks-extra-symbols")
     if extra.exists():
@@ -229,7 +232,7 @@ def main():
     )
     check("switch has no framing circle", ring < 8, f"ring={ring}")
     dirs = text_dirs(letter_doc[0], "S")
-    check("switch letter stays upright", bool(dirs) and abs(dirs[0][1][0]) > 0.9, str(dirs))
+    check("switch letter turns", bool(dirs) and abs(dirs[0][1][0]) < 0.2, str(dirs))
     letter_doc.close()
 
     # Page stored with /Rotate 90. Symbol at the visual center must land there.
@@ -252,7 +255,7 @@ def main():
                 "x": visual.width / 2,
                 "y": visual.height / 2,
                 "size": 60,
-                "rotation": 30,
+                "rotation": 0,
                 "color": "#c4271b",
             }
         ],
@@ -356,6 +359,96 @@ def main():
     check("rotated sheet: dashed line follows the view", len(spun_dark) >= 2 and len(spun_light) >= 2, str(spun_runs[:8]))
     check("rotated sheet: line misses the corner", dark_pixels(spun_line_pix, 0, 0, 16, 16) == 0)
     spun_line_doc.close()
+
+    def rejected(raw, needle):
+        try:
+            parse_placements(raw, 1, ids)
+        except ValueError as exc:
+            return needle in str(exc)
+        return False
+
+    check(
+        "empty note rejected",
+        rejected([{"kind": "note", "page": 0, "x": 10, "y": 10, "text": "  ", "size": 12, "color": "#141414"}], "empty"),
+    )
+    check(
+        "short arrow rejected",
+        rejected([{"kind": "arrow", "page": 0, "x1": 10, "y1": 10, "x2": 12, "y2": 10, "color": "#141414"}], "too short"),
+    )
+
+    callout = parse_placements(
+        [
+            {
+                "kind": "note",
+                "page": 0,
+                "x": 36,
+                "y": 24,
+                "text": "ADD CIRCUIT\nIN GARAGE",
+                "size": 14,
+                "color": "#141414",
+            },
+            {"kind": "arrow", "page": 0, "x1": 30, "y1": 90, "x2": 250, "y2": 90, "color": "#141414"},
+        ],
+        1,
+        ids,
+    )
+    noted = export_pdf(line_bytes, callout, by_id)
+    noted_doc = pymupdf.open(stream=noted, filetype="pdf")
+    noted_text = noted_doc[0].get_text()
+    noted_pix = noted_doc[0].get_pixmap(dpi=72, alpha=False)
+    check("note text exports", "ADD CIRCUIT" in noted_text and "IN GARAGE" in noted_text)
+    check("note sits near its point", dark_pixels(noted_pix, 30, 20, 180, 70) > 20)
+    check("note misses the corner", dark_pixels(noted_pix, 0, 0, 18, 18) == 0)
+    arrow_runs = dash_runs(noted_pix, 40, 230, 90)
+    arrow_dark = [length for dark, length in arrow_runs if dark and length >= 3]
+    arrow_gaps = [length for dark, length in arrow_runs if not dark and length >= 3]
+    check("arrow is a solid line", len(arrow_dark) == 1 and arrow_dark[0] > 150, str(arrow_runs[:8]))
+    check("arrow is not dashed", len(arrow_gaps) == 0, str(arrow_runs[:8]))
+    check("arrow head leaves the shaft", dark_pixels(noted_pix, 236, 93, 242, 96) > 0)
+    check("arrow shaft stays thin", dark_pixels(noted_pix, 80, 100, 140, 112) == 0)
+    noted_doc.close()
+
+    spun_note = export_pdf(
+        rotated_bytes,
+        [
+            {
+                "kind": "note",
+                "page": 0,
+                "x": 24,
+                "y": 40,
+                "text": "PANEL",
+                "size": 14,
+                "color": "#141414",
+            },
+            {
+                "kind": "arrow",
+                "page": 0,
+                "x1": 30,
+                "y1": visual.height / 2,
+                "x2": visual.width - 30,
+                "y2": visual.height / 2,
+                "color": "#141414",
+            },
+        ],
+        by_id,
+    )
+    spun_note_doc = pymupdf.open(stream=spun_note, filetype="pdf")
+    spun_note_pix = spun_note_doc[0].get_pixmap(dpi=72, alpha=False)
+    spun_note_text = spun_note_doc[0].get_text()
+    check("rotated sheet: note text exports", "PANEL" in spun_note_text)
+    check("rotated sheet: note stays at the visual point", dark_pixels(spun_note_pix, 20, 36, 140, 80) > 15)
+    check("rotated sheet: note misses the corner", dark_pixels(spun_note_pix, 0, 0, 12, 12) == 0)
+    spun_arrow_runs = dash_runs(spun_note_pix, 40, int(visual.width) - 40, mid_y)
+    spun_arrow_dark = [length for dark, length in spun_arrow_runs if dark and length >= 3]
+    spun_arrow_gaps = [length for dark, length in spun_arrow_runs if not dark and length >= 3]
+    check(
+        "rotated sheet: arrow follows the view",
+        len(spun_arrow_dark) == 1 and spun_arrow_dark[0] > 80,
+        str(spun_arrow_runs[:8]),
+    )
+    check("rotated sheet: arrow is not dashed", len(spun_arrow_gaps) == 0, str(spun_arrow_runs[:8]))
+    check("rotated sheet: arrow misses the corner", dark_pixels(spun_note_pix, 0, 0, 16, 16) == 0)
+    spun_note_doc.close()
 
     # Every symbol, plus the sample plan underneath.
     placements = []
