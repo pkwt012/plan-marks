@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <g class="rot"></g>
+  <g fill="none" stroke="#141414" stroke-width="6" stroke-linecap="butt">
+    <line x1="16" y1="40" x2="84" y2="40"/>
+    <line x1="16" y1="28" x2="16" y2="52"/>
+    <line x1="84" y1="28" x2="84" y2="52"/>
+  </g>
+  <text class="label" x="50" y="74" text-anchor="middle" font-family="Helvetica" font-size="18" font-weight="700" fill="#141414">120V</text>
+</svg>

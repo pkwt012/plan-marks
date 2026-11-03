@@ -245,6 +245,51 @@ body.col-resize, body.col-resize * { cursor: col-resize !important; }
 .readout { color: var(--text); font-family: var(--mono); font-size: 11px; }
 .presets { display: flex; gap: 6px; }
 .presets button { flex: 1; padding: 5px 4px; font-size: 12px; }
+.apply-size { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.apply-size button { font-size: 12px; text-align: left; line-height: 1.3; }
+.apply-scope, .counts-scope {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.apply-scope label, .counts-scope label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+}
+.counts {
+  margin-top: 12px;
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+}
+.counts summary {
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--faint);
+  list-style: none;
+}
+.counts summary::-webkit-details-marker { display: none; }
+.counts summary::marker { content: ""; }
+.counts summary:hover { color: var(--text); }
+.counts-scope { margin-top: 8px; }
+.counts ul { list-style: none; margin: 8px 0; padding: 0; }
+.counts li {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12.5px;
+  padding: 2px 0;
+}
+.counts .count-name { color: var(--text); }
+.counts .count-n { font-family: var(--mono); color: var(--accent); font-variant-numeric: tabular-nums; }
+#countsSheetBtn { width: 100%; font-size: 12px; }
+.run-label { cursor: grab; }
 .tool-rows {
   position: sticky;
   top: 0;

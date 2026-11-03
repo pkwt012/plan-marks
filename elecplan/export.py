@@ -31,7 +31,7 @@ def _finite(*values: float) -> None:
         raise ValueError("non-numeric coordinate")
 
 
-def parse_placements(raw, page_count: int, symbol_ids: set[str]) -> list[dict]:
+def parse_placements(raw, page_count: int, symbol_ids: set[str], run_ids: set[str] | None = None) -> list[dict]:
     if not isinstance(raw, list):
         raise ValueError("placements must be a list")
     if len(raw) > 5000:
@@ -101,6 +101,31 @@ def parse_placements(raw, page_count: int, symbol_ids: set[str]) -> list[dict]:
                 out.append(
                     {
                         "kind": "arrow",
+                        "page": page,
+                        "x1": x1,
+                        "y1": y1,
+                        "x2": x2,
+                        "y2": y2,
+                        "color": color,
+                    }
+                )
+                continue
+            if kind == "run":
+                page = _page_index(item, page_count)
+                sid = item["symbolId"]
+                allowed = run_ids if run_ids is not None else set()
+                if sid not in symbol_ids or sid not in allowed:
+                    raise ValueError(f"unknown run {sid}")
+                x1, y1 = float(item["x1"]), float(item["y1"])
+                x2, y2 = float(item["x2"]), float(item["y2"])
+                color = _color(item)
+                _finite(x1, y1, x2, y2)
+                if math.hypot(x2 - x1, y2 - y1) < 8:
+                    raise ValueError("run is too short")
+                out.append(
+                    {
+                        "kind": "run",
+                        "symbolId": sid,
                         "page": page,
                         "x1": x1,
                         "y1": y1,
@@ -224,6 +249,78 @@ def _draw_arrow(page, item: dict) -> None:
     )
 
 
+def _under_perp(ux: float, uy: float) -> tuple[float, float]:
+    """Unit perpendicular that sits under a run, in visual y-down space."""
+    px, py = -uy, ux
+    if abs(ux) >= abs(uy):
+        if py < 0:
+            px, py = -px, -py
+    elif px < 0:
+        px, py = -px, -py
+    return px, py
+
+
+def _readable_angle(dx: float, dy: float) -> float:
+    """Degrees of the run, flipped so the label is not upside down."""
+    angle = math.degrees(math.atan2(dy, dx))
+    if angle > 90 or angle <= -90:
+        angle += 180
+    return angle
+
+
+def _draw_run(page, item: dict, label: str) -> None:
+    """Solid run with end bars and a label centered on the under side."""
+    matrix = page.derotation_matrix
+    x1, y1 = float(item["x1"]), float(item["y1"])
+    x2, y2 = float(item["x2"]), float(item["y2"])
+    dx, dy = x2 - x1, y2 - y1
+    length = math.hypot(dx, dy)
+    ux, uy = dx / length, dy / length
+    px, py = _under_perp(ux, uy)
+    color = _rgb(item["color"])
+    bar = 5.5
+
+    def pt(x: float, y: float) -> pymupdf.Point:
+        return pymupdf.Point(x, y) * matrix
+
+    page.draw_line(pt(x1, y1), pt(x2, y2), color=color, width=1.35, lineCap=0, overlay=True)
+    for sx, sy in ((x1, y1), (x2, y2)):
+        page.draw_line(
+            pt(sx - px * bar, sy - py * bar),
+            pt(sx + px * bar, sy + py * bar),
+            color=color,
+            width=1.35,
+            lineCap=0,
+            overlay=True,
+        )
+    fontsize = 8.0
+    width = pymupdf.get_text_length(label, fontname="hebo", fontsize=fontsize)
+    if width > length * 0.92 and width > 0:
+        fontsize = max(4.5, fontsize * (length * 0.92) / width)
+        width = pymupdf.get_text_length(label, fontname="hebo", fontsize=fontsize)
+    ascent = pymupdf.Font("hebo").ascender * fontsize
+    gap = 2.4
+    angle = _readable_angle(dx, dy)
+    tang = math.radians(angle)
+    tx, ty = math.cos(tang), math.sin(tang)
+    bx = (x1 + x2) / 2 + px * (gap + ascent)
+    by = (y1 + y2) / 2 + py * (gap + ascent)
+    origin = pt(bx, by)
+    dxp = matrix.a * tx + matrix.c * ty
+    dyp = matrix.b * tx + matrix.d * ty
+    # insert_text morph rotates in PDF y-up space, so the y-down angle is negated.
+    pang = math.degrees(math.atan2(-dyp, dxp))
+    page.insert_text(
+        pymupdf.Point(origin.x - width / 2, origin.y),
+        label,
+        fontsize=fontsize,
+        fontname="hebo",
+        color=color,
+        morph=(origin, pymupdf.Matrix(pang)),
+        overlay=True,
+    )
+
+
 def _draw_note(page, item: dict) -> None:
     """Note block. x, y is the visual top-left. Text stays upright on the sheet."""
     size = float(item["size"])
@@ -281,7 +378,7 @@ def export_pdf(pdf_bytes: bytes, placements: list[dict], symbols_by_id: dict) ->
 
     Coordinates are visual: origin at the top-left of the page as shown,
     y downward, units in PDF points. Page rotation (/Rotate) is honored.
-    A placement is a symbol unless kind is "line", "arrow", "note", or "legend".
+    A placement is a symbol unless kind is "line", "arrow", "note", "run", or "legend".
     """
     doc = pymupdf.open(stream=pdf_bytes, filetype="pdf")
     cache: dict[tuple, pymupdf.Document] = {}
@@ -299,6 +396,12 @@ def export_pdf(pdf_bytes: bytes, placements: list[dict], symbols_by_id: dict) ->
                 continue
             if kind == "note":
                 _draw_note(page, item)
+                continue
+            if kind == "run":
+                label = str(symbols_by_id[item["symbolId"]].get("runLabel") or "").strip()
+                if not label:
+                    raise ValueError("run has no label")
+                _draw_run(page, item, label)
                 continue
             if kind == "legend":
                 if legend_doc is None:

@@ -189,6 +189,28 @@
       "hint": "Under cabinet lights. Rotate the letters to follow the run."
     },
     {
+      "id": "ucl120",
+      "name": "Under cabinet 120V",
+      "category": "lighting",
+      "file": "ucl120.svg",
+      "wall": false,
+      "place": "run",
+      "runLabel": "120V",
+      "keywords": "under cabinet 120v ucl light strip",
+      "hint": "Click one end, then the other. 120V sits under the line."
+    },
+    {
+      "id": "ledtape",
+      "name": "LED tape light",
+      "category": "lighting",
+      "file": "ledtape.svg",
+      "wall": false,
+      "place": "run",
+      "runLabel": "TAPE",
+      "keywords": "led tape light strip under cabinet",
+      "hint": "Click one end, then the other. TAPE sits under the line."
+    },
+    {
       "id": "pendant",
       "name": "Pendant",
       "category": "lighting",

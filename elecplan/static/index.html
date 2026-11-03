@@ -77,6 +77,13 @@
             <button type="button" data-size="42">Large</button>
             <button type="button" id="sizeOneFoot" disabled title="Make the symbol box one foot on the plan">1 ft</button>
           </div>
+          <div id="applySizeBox" class="apply-size" hidden>
+            <button type="button" id="applySizeBtn">Apply size to all</button>
+            <div class="apply-scope" role="radiogroup" aria-label="Which marks get this size">
+              <label><input type="radio" name="applyScope" value="sheet" checked> This sheet only</label>
+              <label><input type="radio" name="applyScope" value="all"> All sheets</label>
+            </div>
+          </div>
         </div>
         <div class="calib">
           <div class="row">
@@ -119,6 +126,16 @@
             <button type="button" id="delBtn" class="danger" title="Delete (Del)">Delete</button>
           </div>
         </div>
+        <details id="countsPanel" class="counts">
+          <summary>Counts</summary>
+          <div class="counts-scope" role="radiogroup" aria-label="Which sheets to count">
+            <label><input type="radio" name="countScope" value="sheet" checked> This sheet</label>
+            <label><input type="radio" name="countScope" value="all"> All sheets</label>
+          </div>
+          <ul id="countsList"></ul>
+          <p id="countsEmpty" class="hint">No symbols yet.</p>
+          <button type="button" id="countsSheetBtn">Add counts sheet</button>
+        </details>
       </div>
       <div id="sideSplit" class="splitter side" role="separator" aria-orientation="vertical" aria-label="Resize the side panels" tabindex="0"></div>
     </aside>
@@ -163,6 +180,9 @@
       <li>Note places text on the sheet. Click where the note should sit, then type it. Drag the note off to the side.</li>
       <li>Arrow points at the work. Click the first point, then click where the arrow points. Esc cancels that arrow.</li>
       <li>Dashed line connects lights. Click the first point, then the next. Esc cancels the segment.</li>
+      <li>Under cabinet 120V and LED tape light are runs. Click one end, then the other. The words sit under the line. Esc cancels that run.</li>
+      <li>Apply size to all copies the selected symbol’s size onto the other marks of that type. This sheet only is the usual choice. All sheets covers the whole plan.</li>
+      <li>Counts lists each symbol that is on the plan. Add counts sheet puts that list on a new page.</li>
       <li>Drop legend places a key of every symbol on this sheet. Drag it where the crew can read it.</li>
       <li>Legend in the header adds a sheet with every symbol, its name, and a short description.</li>
       <li>Calibrate on a known dimension (the sample has a 10 ft line) so size can be read in feet.</li>

@@ -35,6 +35,7 @@ const state = {
   tool: null,
   lineDraft: null,
   arrowDraft: null,
+  runDraft: null,
   noteSize: 12,
   undo: [],
   redo: [],
@@ -314,6 +315,10 @@ function goToPage(index) {
     state.arrowDraft = null;
     toast("Arrow cancelled because the sheet changed.");
   }
+  if (state.runDraft) {
+    state.runDraft = null;
+    toast("Run cancelled because the sheet changed.");
+  }
   showPage(index, { fit: refit });
   syncInspector();
 }
@@ -389,7 +394,66 @@ function isSymbol(p) {
 }
 
 function isSegment(p) {
-  return Boolean(p && (p.kind === "line" || p.kind === "arrow"));
+  return Boolean(p && (p.kind === "line" || p.kind === "arrow" || p.kind === "run"));
+}
+
+function isRunSymbol(sym) {
+  return Boolean(sym && sym.place === "run" && sym.runLabel);
+}
+
+function runLabelOf(p) {
+  const sym = p && symbolsById[p.symbolId];
+  return (sym && sym.runLabel) || "";
+}
+
+function runGeometry(p) {
+  const x1 = Number(p.x1);
+  const y1 = Number(p.y1);
+  const x2 = Number(p.x2);
+  const y2 = Number(p.y2);
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const length = Math.hypot(dx, dy);
+  const label = runLabelOf(p);
+  const midX = (x1 + x2) / 2;
+  const midY = (y1 + y2) / 2;
+  if (length < 0.5) {
+    return { length, bars: [], label, fontSize: 8, textX: midX, textY: midY + 11, angle: 0 };
+  }
+  const ux = dx / length;
+  const uy = dy / length;
+  let px = -uy;
+  let py = ux;
+  if (Math.abs(ux) >= Math.abs(uy)) {
+    if (py < 0) {
+      px = -px;
+      py = -py;
+    }
+  } else if (px < 0) {
+    px = -px;
+    py = -py;
+  }
+  const bar = 5.5;
+  const bars = [
+    { x1: x1 - px * bar, y1: y1 - py * bar, x2: x1 + px * bar, y2: y1 + py * bar },
+    { x1: x2 - px * bar, y1: y2 - py * bar, x2: x2 + px * bar, y2: y2 + py * bar },
+  ];
+  let fontSize = 8;
+  const chars = Math.max(label.length, 1);
+  const width = chars * fontSize * 0.62;
+  if (width > length * 0.92) fontSize = Math.max(4.5, (length * 0.92) / (chars * 0.62));
+  const offset = 2.4 + fontSize * 1.07;
+  let angle = (Math.atan2(dy, dx) * 180) / Math.PI;
+  if (angle > 90 || angle <= -90) angle += 180;
+  return {
+    length,
+    bars,
+    label,
+    fontSize,
+    textX: midX + px * offset,
+    textY: midY + py * offset,
+    angle,
+  };
 }
 
 function arrowParts(p) {
@@ -542,13 +606,45 @@ function addArrowHead(parent, p, color, events) {
   parent.appendChild(poly);
 }
 
+function addRunLabel(parent, geo, color, events) {
+  if (!geo.label) return;
+  const text = document.createElementNS(SVGNS, "text");
+  text.setAttribute("class", "run-label");
+  text.setAttribute("x", "0");
+  text.setAttribute("y", "0");
+  text.setAttribute("text-anchor", "middle");
+  text.setAttribute("transform", `translate(${geo.textX} ${geo.textY}) rotate(${geo.angle})`);
+  text.setAttribute("font-family", "Helvetica, Arial, sans-serif");
+  text.setAttribute("font-size", String(geo.fontSize));
+  text.setAttribute("font-weight", "700");
+  text.setAttribute("fill", color);
+  text.setAttribute("pointer-events", events);
+  text.textContent = geo.label;
+  parent.appendChild(text);
+}
+
 function wireGroup(p, draft) {
   const g = document.createElementNS(SVGNS, "g");
   g.setAttribute("class", draft ? "wire wire-draft" : "wire");
   if (!draft) g.dataset.id = p.id;
   const metrics = wireMetrics();
-  const arrow = p.kind === "arrow";
   const color = p.color || state.ink || "#141414";
+  if (p.kind === "run") {
+    const geo = runGeometry(p);
+    if (!draft && p.id === state.selectedId) {
+      addWireLine(g, p, "wire-halo", "#e2a23a", 3.4, "none", false);
+      for (const bar of geo.bars) addWireLine(g, bar, "wire-halo", "#e2a23a", 3.4, "none", false);
+    }
+    addWireLine(g, p, "wire-ink", color, 1.35, "none", false);
+    for (const bar of geo.bars) addWireLine(g, bar, "run-bar", color, 1.35, draft ? "none" : "stroke", false);
+    addRunLabel(g, geo, color, draft ? "none" : "all");
+    if (!draft) {
+      const hit = addWireLine(g, p, "wire-hit", "#141414", metrics.hit, "stroke", false);
+      hit.setAttribute("stroke-opacity", "0.01");
+    }
+    return g;
+  }
+  const arrow = p.kind === "arrow";
   const shaft = arrow ? arrowParts(p) : p;
   if (!draft && p.id === state.selectedId) {
     addWireLine(g, p, "wire-halo", "#e2a23a", 3.4, "none", !arrow);
@@ -603,6 +699,9 @@ function renderWires() {
   if (state.arrowDraft && state.arrowDraft.page === state.pageIndex) {
     wires.appendChild(wireGroup(state.arrowDraft, true));
   }
+  if (state.runDraft && state.runDraft.page === state.pageIndex) {
+    wires.appendChild(wireGroup(state.runDraft, true));
+  }
 }
 
 function refreshWireChrome() {
@@ -619,7 +718,10 @@ function refreshWireChrome() {
 
 function renderMarks() {
   marksLayer.innerHTML = "";
-  if (!state.doc) return;
+  if (!state.doc) {
+    renderCounts();
+    return;
+  }
   for (const p of state.placements) {
     if (p.page !== state.pageIndex || isSegment(p)) continue;
     if (p.kind === "legend") marksLayer.appendChild(legendElement(p));
@@ -628,9 +730,14 @@ function renderMarks() {
   }
   renderWires();
   drawCalib();
+  renderCounts();
 }
 
 function updateLine(p) {
+  if (p.kind === "run") {
+    renderWires();
+    return;
+  }
   const g = marksLayer.querySelector(`.wire[data-id="${CSS.escape(p.id)}"]`);
   if (!g) {
     renderWires();
@@ -883,17 +990,22 @@ function applyProject(proj, { quiet = false } = {}) {
       continue;
     }
     const color = /^#[0-9a-fA-F]{6}$/.test(item.color || "") ? item.color.toLowerCase() : "#141414";
-    if (item.kind === "line" || item.kind === "arrow") {
+    if (item.kind === "line" || item.kind === "arrow" || item.kind === "run") {
       const coords = [item.x1, item.y1, item.x2, item.y2].map(Number);
       if (coords.some((n) => !Number.isFinite(n))) {
         skipped += 1;
         continue;
       }
-      if (item.kind === "arrow" && Math.hypot(coords[2] - coords[0], coords[3] - coords[1]) < 4) {
+      const length = Math.hypot(coords[2] - coords[0], coords[3] - coords[1]);
+      if (item.kind === "arrow" && length < 4) {
         skipped += 1;
         continue;
       }
-      placements.push({
+      if (item.kind === "run" && (length < 8 || !isRunSymbol(symbolsById[item.symbolId]))) {
+        skipped += 1;
+        continue;
+      }
+      const mark = {
         id: item.id || uid(),
         kind: item.kind,
         page,
@@ -902,7 +1014,9 @@ function applyProject(proj, { quiet = false } = {}) {
         x2: coords[2],
         y2: coords[3],
         color,
-      });
+      };
+      if (item.kind === "run") mark.symbolId = item.symbolId;
+      placements.push(mark);
       continue;
     }
     if (item.kind === "note") {
@@ -944,7 +1058,7 @@ function applyProject(proj, { quiet = false } = {}) {
       });
       continue;
     }
-    if (!symbolsById[item.symbolId]) {
+    if (!symbolsById[item.symbolId] || symbolsById[item.symbolId].place === "run") {
       skipped += 1;
       continue;
     }
@@ -1041,6 +1155,7 @@ function buildSymbolSelect() {
   const select = $("symbolSelect");
   select.innerHTML = "";
   for (const sym of library.symbols) {
+    if (sym.place === "run") continue;
     const opt = document.createElement("option");
     opt.value = sym.id;
     opt.textContent = sym.name;
@@ -1069,15 +1184,19 @@ function clearDrawingTools() {
   state.tool = null;
   state.lineDraft = null;
   state.arrowDraft = null;
+  state.runDraft = null;
   state.calibStep = 0;
   state.calibDraft = null;
 }
 
 function toggleArm(id) {
+  const sym = symbolsById[id];
+  const was = state.armedId === id;
   clearDrawingTools();
-  state.armedId = state.armedId === id ? null : id;
-  if (state.armedId && symbolsById[id]) {
-    openCategories.add(symbolsById[id].category);
+  state.armedId = was ? null : id;
+  if (state.armedId && isRunSymbol(sym)) state.tool = "run";
+  if (state.armedId && sym) {
+    openCategories.add(sym.category);
     saveLayout();
   }
   renderPalette();
@@ -1119,11 +1238,14 @@ function syncInspector() {
   else if (state.tool === "line") hint.textContent = "Click the first point of a dashed line. Esc puts the tool away.";
   else if (state.tool === "arrow" && state.arrowDraft) hint.textContent = "Click where the arrow points. Esc cancels this arrow.";
   else if (state.tool === "arrow") hint.textContent = "Click the first point, then click where the arrow points. Esc puts the tool away.";
+  else if (state.tool === "run" && state.runDraft) hint.textContent = "Click the other end. Esc cancels this run.";
+  else if (state.tool === "run") hint.textContent = (sym && sym.hint) || "Click one end, then the other. Esc puts the tool away.";
   else if (state.tool === "note") hint.textContent = "Click the sheet, then type the note. Esc puts the tool away.";
   else if (state.tool === "legend") hint.textContent = "Click the sheet to drop a legend of every symbol.";
   else if (sym) hint.textContent = sym.hint || `Click the plan to place ${sym.name}. Esc puts the tool away.`;
   else if (p && p.kind === "line") hint.textContent = "Drag the line to move it. Drag an amber end to change it.";
   else if (p && p.kind === "arrow") hint.textContent = "Drag the arrow to move it. Drag an amber end to change it.";
+  else if (p && p.kind === "run") hint.textContent = "Drag the run to move it. Drag an amber end to change its length.";
   else if (p && p.kind === "note") hint.textContent = "Edit the note here. Drag it on the sheet.";
   else if (p && p.kind === "legend") hint.textContent = "Drag the legend. The slider changes how wide it is.";
   else if (p) hint.textContent = symbolsById[p.symbolId] ? symbolsById[p.symbolId].hint : "Drag to move. Drag the handle to rotate.";
@@ -1145,6 +1267,10 @@ function syncInspector() {
   } else if (p && p.kind === "arrow") {
     range.disabled = true;
     $("sizeLabel").textContent = "Arrow";
+    $("sizeReadout").textContent = sizeText(Math.hypot(p.x2 - p.x1, p.y2 - p.y1));
+  } else if (p && p.kind === "run") {
+    range.disabled = true;
+    $("sizeLabel").textContent = "Run length";
     $("sizeReadout").textContent = sizeText(Math.hypot(p.x2 - p.x1, p.y2 - p.y1));
   } else if ((p && p.kind === "note") || (!p && state.tool === "note")) {
     range.disabled = false;
@@ -1190,6 +1316,8 @@ function syncInspector() {
   $("dropLegendBtn").classList.toggle("active", state.tool === "legend");
   $("dropLegendBtn").setAttribute("aria-pressed", state.tool === "legend" ? "true" : "false");
 
+  $("applySizeBox").hidden = !symbolLike;
+  if (symbolLike) $("applySizeBtn").textContent = `Apply size to all ${symbolName(p.symbolId)}`;
   $("selectionBox").hidden = !p;
   $("symbolField").hidden = !symbolLike;
   $("noteField").hidden = !(p && p.kind === "note");
@@ -1209,9 +1337,132 @@ function syncInspector() {
   viewport.classList.toggle("placing", Boolean(state.armedId || state.tool) && !state.calibStep);
 }
 
+function symbolName(id) {
+  const sym = symbolsById[id];
+  return (sym && sym.name) || "symbol";
+}
+
+function applyScope() {
+  const picked = document.querySelector('input[name="applyScope"]:checked');
+  return picked && picked.value === "all" ? "all" : "sheet";
+}
+
+function applySizeToAll() {
+  const p = selected();
+  if (!isSymbol(p)) return;
+  const scope = applyScope();
+  const name = symbolName(p.symbolId);
+  const where = scope === "all" ? "" : " on this sheet";
+  const others = state.placements.filter((item) => {
+    if (item.id === p.id || !isSymbol(item) || item.symbolId !== p.symbolId) return false;
+    if (scope === "sheet" && item.page !== p.page) return false;
+    return true;
+  });
+  if (!others.length) {
+    toast(`No other ${name} marks${where}.`);
+    return;
+  }
+  const changed = others.filter((item) => item.size !== p.size);
+  if (!changed.length) {
+    toast(`Those ${name} marks already use this size.`);
+    return;
+  }
+  pushUndo();
+  for (const item of changed) item.size = p.size;
+  renderMarks();
+  syncInspector();
+  scheduleSave();
+  const n = changed.length;
+  toast(`Set size on ${n} ${name} mark${n === 1 ? "" : "s"}.`);
+}
+
+function countScope() {
+  const picked = document.querySelector('input[name="countScope"]:checked');
+  return picked && picked.value === "all" ? "all" : "sheet";
+}
+
+function countRows() {
+  const scope = countScope();
+  const tally = new Map();
+  for (const item of state.placements) {
+    if (item.kind === "note" || item.kind === "arrow" || item.kind === "line" || item.kind === "legend") continue;
+    if (!isSymbol(item) && item.kind !== "run") continue;
+    if (!item.symbolId) continue;
+    if (scope === "sheet" && item.page !== state.pageIndex) continue;
+    tally.set(item.symbolId, (tally.get(item.symbolId) || 0) + 1);
+  }
+  const catIndex = new Map(library.categories.map((cat, index) => [cat.id, index]));
+  return [...tally.entries()]
+    .map(([id, count]) => {
+      const sym = symbolsById[id];
+      return { id, count, name: sym ? sym.name : id, category: sym ? sym.category : "" };
+    })
+    .sort(
+      (a, b) =>
+        b.count - a.count ||
+        (catIndex.get(a.category) ?? 99) - (catIndex.get(b.category) ?? 99) ||
+        a.name.localeCompare(b.name) ||
+        a.id.localeCompare(b.id),
+    );
+}
+
+function renderCounts() {
+  const list = $("countsList");
+  if (!list) return;
+  const rows = countRows();
+  list.replaceChildren();
+  for (const row of rows) {
+    const li = document.createElement("li");
+    const name = document.createElement("span");
+    name.className = "count-name";
+    name.textContent = row.name;
+    const n = document.createElement("span");
+    n.className = "count-n";
+    n.textContent = String(row.count);
+    li.append(name, n);
+    list.appendChild(li);
+  }
+  $("countsEmpty").hidden = rows.length > 0;
+  $("countsSheetBtn").disabled = rows.length === 0;
+}
+
+async function addCountsSheet() {
+  if (!state.doc) return;
+  const rows = countRows();
+  if (!rows.length) {
+    toast("No symbols to put on a counts sheet.");
+    return;
+  }
+  const scope = countScope();
+  setBusy(true, "Adding counts…");
+  try {
+    const res = await fetch("/api/counts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        scope,
+        page: state.pageIndex,
+        rows: rows.map((row) => ({ name: row.name, count: row.count })),
+      }),
+    });
+    if (!res.ok) throw new Error(await readError(res));
+    const info = await res.json();
+    state.doc = info;
+    const start = Math.max(0, info.pageCount - (info.added || 1));
+    showPage(start, { fit: true });
+    scheduleSave();
+    const where = scope === "all" ? "all sheets" : "this sheet";
+    toast(`Added a counts sheet for ${where}.`);
+  } catch (err) {
+    toast(err.message);
+  } finally {
+    setBusy(false);
+  }
+}
+
 function setSize(pt, { undo = false } = {}) {
   const p = selected();
-  if (p && (p.kind === "line" || p.kind === "arrow")) return;
+  if (p && (p.kind === "line" || p.kind === "arrow" || p.kind === "run")) return;
   if (p && p.kind === "note") {
     pt = clamp(pt, 8, 36);
     if (undo) pushUndo();
@@ -1253,6 +1504,7 @@ function applyColor(value) {
   const ink = value || "#141414";
   if (state.lineDraft) state.lineDraft.color = ink;
   if (state.arrowDraft) state.arrowDraft.color = ink;
+  if (state.runDraft) state.runDraft.color = ink;
   if (p && (p.kind === "line" || p.kind === "arrow" || p.kind === "note")) p.color = ink;
   else if (p) {
     const sym = symbolsById[p.symbolId];
@@ -1260,7 +1512,7 @@ function applyColor(value) {
   }
   if (p && p.kind === "note") updateNote(p);
   else if (p && !isSegment(p)) renderMarks();
-  else if ((p && isSegment(p)) || state.lineDraft || state.arrowDraft) renderWires();
+  else if ((p && isSegment(p)) || state.lineDraft || state.arrowDraft || state.runDraft) renderWires();
   syncInspector();
   scheduleSave();
 }
@@ -1460,10 +1712,12 @@ function onSheet(pt, page) {
 function segmentClick(pt, kind) {
   const page = currentPage();
   if (!page || !onSheet(pt, page)) return;
-  const key = kind === "arrow" ? "arrowDraft" : "lineDraft";
+  const key = kind === "arrow" ? "arrowDraft" : kind === "run" ? "runDraft" : "lineDraft";
   const snapped = snapPoint(pt);
   const draft = state[key];
   if (!draft) {
+    const sym = kind === "run" ? symbolsById[state.armedId] : null;
+    if (kind === "run" && !isRunSymbol(sym)) return;
     state[key] = {
       kind,
       page: state.pageIndex,
@@ -1471,8 +1725,9 @@ function segmentClick(pt, kind) {
       y1: snapped.y,
       x2: snapped.x,
       y2: snapped.y,
-      color: state.ink || "#141414",
+      color: state.ink || (sym && sym.defaultColor) || "#141414",
     };
+    if (kind === "run") state[key].symbolId = sym.id;
     renderWires();
     syncInspector();
     setStatus();
@@ -1481,8 +1736,11 @@ function segmentClick(pt, kind) {
   draft.x2 = snapped.x;
   draft.y2 = snapped.y;
   const length = Math.hypot(draft.x2 - draft.x1, draft.y2 - draft.y1);
-  if (length < 4) {
-    toast(kind === "arrow" ? "That arrow is too short. Click where it points." : "That line is too short. Click a second point.");
+  const minLength = kind === "run" ? 8 : 4;
+  if (length < minLength) {
+    if (kind === "arrow") toast("That arrow is too short. Click where it points.");
+    else if (kind === "run") toast("That run is too short. Click the other end.");
+    else toast("That line is too short. Click a second point.");
     return;
   }
   pushUndo();
@@ -1496,6 +1754,7 @@ function segmentClick(pt, kind) {
     y2: draft.y2,
     color: draft.color,
   };
+  if (kind === "run") mark.symbolId = draft.symbolId;
   state.placements.push(mark);
   state.selectedId = mark.id;
   state[key] = null;
@@ -1622,7 +1881,7 @@ function onPointerDown(e) {
   }
   if (e.button !== 0) return;
   const pt = clientToPdf(e.clientX, e.clientY);
-  if (state.tool === "line" || state.tool === "arrow") {
+  if (state.tool === "line" || state.tool === "arrow" || state.tool === "run") {
     e.preventDefault();
     segmentClick(pt, state.tool);
     return;
@@ -1687,7 +1946,7 @@ function onPointerMove(e) {
       state.calibDraft.y2 = pt.y;
       drawCalib();
     }
-    const draft = state.tool === "line" ? state.lineDraft : state.tool === "arrow" ? state.arrowDraft : null;
+    const draft = state.tool === "line" ? state.lineDraft : state.tool === "arrow" ? state.arrowDraft : state.tool === "run" ? state.runDraft : null;
     if (draft && !state.drag) {
       const snapped = snapPoint(pt);
       draft.x2 = snapped.x;
@@ -1711,7 +1970,8 @@ function onPointerMove(e) {
     const nextY1 = drag.end === "1" ? pdf.y : p.y1;
     const nextX2 = drag.end === "1" ? p.x2 : pdf.x;
     const nextY2 = drag.end === "1" ? p.y2 : pdf.y;
-    if (p.kind === "arrow" && Math.hypot(nextX2 - nextX1, nextY2 - nextY1) < 4) return;
+    const minLen = p.kind === "arrow" ? 4 : p.kind === "run" ? 8 : 0;
+    if (minLen && Math.hypot(nextX2 - nextX1, nextY2 - nextY1) < minLen) return;
     if (drag.undo) {
       pushUndo();
       drag.undo = false;
@@ -1799,6 +2059,11 @@ function setStatus() {
     else if (state.tool === "line") left = "Dashed line: click the first point. Esc puts the tool away.";
     else if (state.tool === "arrow" && state.arrowDraft) left = "Arrow: click where it points. Esc cancels this arrow.";
     else if (state.tool === "arrow") left = "Arrow: click the first point, then where it points.";
+    else if (state.tool === "run" && state.runDraft) left = "Run: click the other end. Esc cancels this run.";
+    else if (state.tool === "run") {
+      const sym = symbolsById[state.armedId];
+      left = sym ? `${sym.name}: click one end, then the other.` : "Click one end, then the other.";
+    }
     else if (state.tool === "note") left = "Note: click the sheet, then type. Esc puts the tool away.";
     else if (state.tool === "legend") left = "Click the sheet to drop the legend.";
     else if (state.armedId) {
@@ -1806,6 +2071,7 @@ function setStatus() {
       left = `Placing ${sym ? sym.name : "symbol"}. Click the plan. Esc cancels.`;
     } else if (selected() && selected().kind === "line") left = "Drag the line to move it. Drag an end to reshape it.";
     else if (selected() && selected().kind === "arrow") left = "Drag the arrow to move it. Drag an end to reshape it.";
+    else if (selected() && selected().kind === "run") left = "Drag the run to move it. Drag an end to change its length.";
     else if (selected() && selected().kind === "note") left = "Edit the note in the side panel. Drag it on the sheet.";
     else if (selected() && selected().kind === "legend") left = "Drag the legend. The slider changes its width.";
     else if (selected()) left = "Drag to move. Drag the amber handle to rotate.";
@@ -1849,6 +2115,7 @@ async function openPdfBytes(buf, filename, { append = false } = {}) {
     state.tool = null;
     state.lineDraft = null;
     state.arrowDraft = null;
+    state.runDraft = null;
     state.calibration = null;
     state.calibStep = 0;
     state.calibDraft = null;
@@ -1994,9 +2261,10 @@ function onKeyDown(e) {
   }
   if (e.key === "Escape") {
     if (state.calibStep) cancelCalib();
-    else if (state.lineDraft || state.arrowDraft) {
+    else if (state.lineDraft || state.arrowDraft || state.runDraft) {
       state.lineDraft = null;
       state.arrowDraft = null;
+      state.runDraft = null;
       renderWires();
       syncInspector();
       setStatus();
@@ -2184,6 +2452,12 @@ function bind() {
   for (const btn of document.querySelectorAll(".presets [data-size]")) {
     btn.addEventListener("click", () => setSize(Number(btn.dataset.size), { undo: true }));
   }
+  $("applySizeBtn").addEventListener("click", () => applySizeToAll());
+  for (const input of document.querySelectorAll('input[name="countScope"]')) {
+    input.addEventListener("change", () => renderCounts());
+  }
+  $("countsSheetBtn").addEventListener("click", () => addCountsSheet());
+  $("countsPanel").addEventListener("toggle", () => saveLayout());
   $("sizeOneFoot").addEventListener("click", () => {
     if (!state.calibration) return;
     const raw = state.calibration.pointsPerFoot;
@@ -2198,6 +2472,7 @@ function bind() {
       state.tool = null;
       state.lineDraft = null;
       state.arrowDraft = null;
+      state.runDraft = null;
       state.calibStep = 1;
       state.calibDraft = null;
       renderPalette();
@@ -2311,6 +2586,7 @@ function loadLayout() {
   try {
     const data = JSON.parse(localStorage.getItem(LAYOUT_KEY) || "{}");
     if (Array.isArray(data.open)) openCategories = new Set(data.open.filter((id) => typeof id === "string"));
+    if (typeof data.countsOpen === "boolean") $("countsPanel").open = data.countsOpen;
     if (data.sideWidth) setLen("--side-width", data.sideWidth, 220, 560);
     if (data.toolsHeight) setLen("--tools-height", data.toolsHeight, 140, 720);
     if (data.toolsWidth) setLen("--tools-width", data.toolsWidth, 180, 480);
@@ -2325,6 +2601,7 @@ function saveLayout() {
     sideWidth: readLen("--side-width", 300),
     toolsHeight: readLen("--tools-height", 340),
     toolsWidth: readLen("--tools-width", 260),
+    countsOpen: $("countsPanel").open,
   };
   try {
     localStorage.setItem(LAYOUT_KEY, JSON.stringify(data));
@@ -2428,6 +2705,7 @@ async function init() {
   buildSymbolSelect();
   buildColors();
   renderPalette();
+  renderCounts();
   syncInspector();
   setStatus();
   bind();

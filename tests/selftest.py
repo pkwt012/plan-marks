@@ -14,6 +14,7 @@ sys.path.insert(0, str(ROOT))
 
 import pymupdf
 
+from elecplan.counts import build_counts_pdf
 from elecplan.export import export_pdf, parse_placements
 from elecplan.legend import build_legend_block, build_legend_pdf, legend_layout
 from elecplan.library import load_symbols, prepare_svg
@@ -104,6 +105,11 @@ def main():
     exhaust = next(item for item in lib["symbols"] if item["id"] == "exhaust")
     fan = next(item for item in lib["symbols"] if item["id"] == "fan")
     check("ucl is letters", ">UCL<" in ucl["svg"] and "<circle" not in ucl["svg"])
+    ucl120 = next(item for item in lib["symbols"] if item["id"] == "ucl120")
+    tape = next(item for item in lib["symbols"] if item["id"] == "ledtape")
+    check("120V run is its own symbol", ucl120["place"] == "run" and ucl120["runLabel"] == "120V" and ">120V<" in ucl120["svg"])
+    check("tape run is its own symbol", tape["place"] == "run" and tape["runLabel"] == "TAPE" and ">TAPE<" in tape["svg"])
+    check("ucl stays a point symbol", ucl.get("place") == "point")
     check("pendant hangs", "<circle" in pendant["svg"] and "<line" in pendant["svg"])
     check("bath fan is EF", ">EF<" in exhaust["svg"] and "<circle" in exhaust["svg"])
     check("bath fan is not the ceiling fan", "ellipse" in fan["svg"] and "ellipse" not in exhaust["svg"])
@@ -360,9 +366,11 @@ def main():
     check("rotated sheet: line misses the corner", dark_pixels(spun_line_pix, 0, 0, 16, 16) == 0)
     spun_line_doc.close()
 
-    def rejected(raw, needle):
+    run_ids = {item["id"] for item in lib["symbols"] if item.get("place") == "run"}
+
+    def rejected(raw, needle, runs=None):
         try:
-            parse_placements(raw, 1, ids)
+            parse_placements(raw, 1, ids, runs if runs is not None else run_ids)
         except ValueError as exc:
             return needle in str(exc)
         return False
@@ -375,6 +383,107 @@ def main():
         "short arrow rejected",
         rejected([{"kind": "arrow", "page": 0, "x1": 10, "y1": 10, "x2": 12, "y2": 10, "color": "#141414"}], "too short"),
     )
+    check(
+        "short run rejected",
+        rejected(
+            [{"kind": "run", "symbolId": "ucl120", "page": 0, "x1": 10, "y1": 10, "x2": 14, "y2": 10, "color": "#141414"}],
+            "too short",
+        ),
+    )
+    check(
+        "point symbol is not a run",
+        rejected(
+            [{"kind": "run", "symbolId": "duplex", "page": 0, "x1": 10, "y1": 10, "x2": 80, "y2": 10, "color": "#141414"}],
+            "unknown run",
+        ),
+    )
+
+    def visual_chars(page, needle):
+        found = []
+        raw = page.get_text("rawdict")
+        matrix = page.rotation_matrix
+        for block in raw.get("blocks", []):
+            if block.get("type") != 0:
+                continue
+            for line in block.get("lines", []):
+                chars = []
+                for span in line.get("spans", []):
+                    for char in span.get("chars", []):
+                        if needle not in "".join(item["c"] for item in span.get("chars", [])):
+                            continue
+                        box = char["bbox"]
+                        point = pymupdf.Point((box[0] + box[2]) / 2, (box[1] + box[3]) / 2) * matrix
+                        chars.append((char["c"], point.x, point.y))
+                text = "".join(char[0] for char in chars)
+                if needle in text:
+                    found.append(chars)
+        return found
+
+    run_page = pymupdf.open()
+    run_page.new_page(width=320, height=180)
+    run_bytes = run_page.tobytes()
+    run_page.close()
+    runs = parse_placements(
+        [
+            {"kind": "run", "symbolId": "ucl120", "page": 0, "x1": 36, "y1": 50, "x2": 250, "y2": 50, "color": "#141414"},
+            {"kind": "run", "symbolId": "ledtape", "page": 0, "x1": 250, "y1": 110, "x2": 40, "y2": 110, "color": "#141414"},
+        ],
+        1,
+        ids,
+        run_ids,
+    )
+    run_pdf = export_pdf(run_bytes, runs, by_id)
+    run_doc = pymupdf.open(stream=run_pdf, filetype="pdf")
+    run_pix = run_doc[0].get_pixmap(dpi=72, alpha=False)
+    run_text = run_doc[0].get_text()
+    shaft = dash_runs(run_pix, 50, 230, 50)
+    shaft_dark = [length for dark, length in shaft if dark and length >= 3]
+    shaft_gaps = [length for dark, length in shaft if not dark and length >= 3]
+    check("120V run is a solid line", len(shaft_dark) == 1 and shaft_dark[0] > 150, str(shaft[:8]))
+    check("120V run is not dashed", len(shaft_gaps) == 0, str(shaft[:8]))
+    check("120V end bar rises off the line", dark_pixels(run_pix, 34, 43, 39, 48) > 0)
+    check("120V label exports", "120V" in run_text and "TAPE" in run_text)
+    volts = visual_chars(run_doc[0], "120V")
+    tape_chars = visual_chars(run_doc[0], "TAPE")
+    check(
+        "120V reads left to right under the line",
+        bool(volts) and volts[0][-1][1] > volts[0][0][1] and min(char[2] for char in volts[0]) > 52,
+        str(volts),
+    )
+    check(
+        "TAPE stays readable when drawn right to left",
+        bool(tape_chars) and tape_chars[0][-1][1] > tape_chars[0][0][1] and min(char[2] for char in tape_chars[0]) > 112,
+        str(tape_chars),
+    )
+    run_doc.close()
+
+    spun_run = export_pdf(
+        rotated_bytes,
+        [
+            {
+                "kind": "run",
+                "symbolId": "ucl120",
+                "page": 0,
+                "x1": 24,
+                "y1": 70,
+                "x2": visual.width - 24,
+                "y2": 70,
+                "color": "#141414",
+            }
+        ],
+        by_id,
+    )
+    spun_run_doc = pymupdf.open(stream=spun_run, filetype="pdf")
+    spun_run_pix = spun_run_doc[0].get_pixmap(dpi=72, alpha=False)
+    spun_volts = visual_chars(spun_run_doc[0], "120V")
+    check("rotated sheet: 120V run exports", "120V" in spun_run_doc[0].get_text())
+    check(
+        "rotated sheet: 120V reads left to right",
+        bool(spun_volts) and spun_volts[0][-1][1] > spun_volts[0][0][1] and min(char[2] for char in spun_volts[0]) > 72,
+        str(spun_volts),
+    )
+    check("rotated sheet: run misses the corner", dark_pixels(spun_run_pix, 0, 0, 12, 12) == 0)
+    spun_run_doc.close()
 
     callout = parse_placements(
         [
@@ -494,10 +603,18 @@ def main():
     status, _headers, body = request(base, "/")
     check("home page", status == 200 and b"Plan Marks" in body, str(status))
     status, _headers, body = request(base, "/static/app.js")
-    check("script", status == 200 and b"function placeAt" in body)
+    check("script", status == 200 and b"function placeAt" in body and b"function addCountsSheet" in body)
     status, _headers, body = request(base, "/api/symbols")
     payload = json.loads(body)
     check("symbols api", status == 200 and len(payload["symbols"]) >= 12)
+    api_by_id = {item["id"]: item for item in payload["symbols"]}
+    check(
+        "run symbols reach the palette",
+        api_by_id["ucl120"]["place"] == "run"
+        and api_by_id["ucl120"]["runLabel"] == "120V"
+        and api_by_id["ledtape"]["runLabel"] == "TAPE"
+        and api_by_id["duplex"]["place"] == "point",
+    )
 
     status, _headers, body = request(base, "/api/open?name=sample-plan.pdf", data=sample, method="POST")
     info = json.loads(body)
@@ -528,6 +645,7 @@ def main():
                 {"symbolId": "smoke", "page": 0, "x": 400, "y": 160, "size": 36, "rotation": 0, "color": "#9f1d1d"},
                 {"symbolId": "panel", "page": 1, "x": 180, "y": 200, "size": 48, "rotation": 90, "color": "#141414"},
                 {"kind": "line", "page": 0, "x1": 220, "y1": 300, "x2": 400, "y2": 160, "color": "#141414"},
+                {"kind": "run", "symbolId": "ledtape", "page": 0, "x1": 80, "y1": 80, "x2": 220, "y2": 80, "color": "#141414"},
                 {"kind": "legend", "page": 1, "x": 24, "y": 24, "width": 280},
             ]
         }
@@ -544,17 +662,109 @@ def main():
     exported = pymupdf.open(stream=pdf, filetype="pdf")
     check("export page count", exported.page_count == 3)
     check("export keeps room name", "LIVING" in exported[0].get_text() or "KITCHEN" in exported[0].get_text())
+    check("export stamps a tape run", "TAPE" in exported[0].get_text())
     check("export stamps a dropped legend", "SYMBOL LEGEND" in exported[1].get_text())
     status, _headers, body = request(base, "/api/legend", method="POST")
     legend_info = json.loads(body)
     check("legend sheet", status == 200 and legend_info["pageCount"] == 4, body[:200])
+
+    empty_counts = json.dumps({"scope": "all", "page": 0, "rows": []}).encode()
+    status, _headers, body = request(
+        base,
+        "/api/counts",
+        data=empty_counts,
+        method="POST",
+        headers={"Content-Type": "application/json"},
+    )
+    check("empty counts rejected", status == 400, body[:160])
+    counts_body = json.dumps(
+        {
+            "scope": "all",
+            "page": 0,
+            "rows": [
+                {"name": "Duplex outlet", "count": 14},
+                {"name": "LED tape light", "count": 2},
+            ],
+        }
+    ).encode()
+    status, _headers, body = request(
+        base,
+        "/api/counts",
+        data=counts_body,
+        method="POST",
+        headers={"Content-Type": "application/json"},
+    )
+    counts_info = json.loads(body)
+    check("counts sheet added", status == 200 and counts_info["pageCount"] == 5, body[:200])
+    status, _headers, counts_pdf = request(
+        base,
+        "/api/export",
+        data=b'{"placements":[]}',
+        method="POST",
+        headers={"Content-Type": "application/json"},
+    )
+    counts_doc = pymupdf.open(stream=counts_pdf, filetype="pdf")
+    counts_text = counts_doc[-1].get_text()
+    check("counts sheet title", "SYMBOL COUNTS" in counts_text and "All sheets" in counts_text, counts_text[:240])
+    check("counts sheet lists symbols", "Duplex outlet" in counts_text and "LED tape light" in counts_text)
+    check("counts sheet total", "Total" in counts_text and "16" in counts_text, counts_text)
+    check(
+        "counts sheet leaves the plan",
+        "LIVING" in counts_doc[0].get_text() or "KITCHEN" in counts_doc[0].get_text(),
+    )
+    counts_doc.close()
+    sheet_body = json.dumps(
+        {"scope": "sheet", "page": 0, "rows": [{"name": "Smoke detector", "count": 3}]}
+    ).encode()
+    status, _headers, body = request(
+        base,
+        "/api/counts",
+        data=sheet_body,
+        method="POST",
+        headers={"Content-Type": "application/json"},
+    )
+    check("sheet counts added", status == 200 and json.loads(body)["pageCount"] == 6, body[:200])
+    status, _headers, sheet_pdf = request(
+        base,
+        "/api/export",
+        data=b'{"placements":[]}',
+        method="POST",
+        headers={"Content-Type": "application/json"},
+    )
+    sheet_doc = pymupdf.open(stream=sheet_pdf, filetype="pdf")
+    sheet_text = sheet_doc[-1].get_text()
+    check("sheet counts names the sheet", "Sheet 1" in sheet_text and "Smoke detector" in sheet_text, sheet_text[:240])
+    sheet_doc.close()
+    long_rows = [{"name": f"Mark {index}", "count": index} for index in range(1, 80)]
+    long_doc = pymupdf.open(stream=build_counts_pdf(long_rows, 400, 300, "All sheets"), filetype="pdf")
+    long_text = "\n".join(page.get_text() for page in long_doc)
+    check("long counts use more than one page", long_doc.page_count > 1, str(long_doc.page_count))
+    check("long counts include the total", "Total" in long_text and "Mark 1" in long_text and "Mark 79" in long_text)
+    long_doc.close()
+    wide_doc = pymupdf.open(
+        stream=build_counts_pdf(
+            [{"name": "Duplex outlet", "count": 1}, {"name": "LED tape light", "count": 12}],
+            2000,
+            1200,
+            "Sheet 1",
+        ),
+        filetype="pdf",
+    )
+    wide_words = wide_doc[0].get_text("words")
+    outlet = next(word for word in wide_words if word[4] == "outlet")
+    count_word = next(word for word in wide_words if word[4] == "1" and abs(word[1] - outlet[1]) < 2)
+    name_gap = count_word[0] - outlet[2]
+    check("count sits beside the name", 8 <= name_gap <= 90, str(round(name_gap, 1)))
+    check("count stays off the far edge", count_word[2] < 500, str(round(count_word[2], 1)))
+    wide_doc.close()
     legend_pdf = build_legend_pdf(lib["symbols"], 792, 612)
     legend_doc = pymupdf.open(stream=legend_pdf, filetype="pdf")
-    legend_text = legend_doc[0].get_text()
+    legend_text = "\n".join(page.get_text() for page in legend_doc)
     check("legend title", "SYMBOL LEGEND" in legend_text)
     check("legend lists 30A outlet", "30A 240V outlet" in legend_text)
     check("legend lists smurf chase", "Smurf chase" in legend_text)
     check("legend lists under cabinet lights", "Under cabinet lights" in legend_text)
+    check("legend lists the 120V run", "Under cabinet 120V" in legend_text and "LED tape light" in legend_text)
     block_pdf, _block_w, _block_h = build_legend_block(lib["symbols"])
     block_doc = pymupdf.open(stream=block_pdf, filetype="pdf")
     block_text = block_doc[0].get_text()

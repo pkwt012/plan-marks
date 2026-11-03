@@ -14,6 +14,7 @@ from urllib.parse import parse_qs, quote, unquote, urlparse
 
 import pymupdf
 
+from elecplan.counts import build_counts_pdf, parse_count_rows
 from elecplan.export import export_pdf, parse_placements
 from elecplan.legend import build_legend_pdf, legend_layout
 from elecplan.library import load_symbols, project_root
@@ -169,6 +170,45 @@ class Session:
         payload["added"] = added
         return payload
 
+    def append_counts(self, payload: dict) -> dict:
+        if self.doc is None or self.data is None:
+            raise ValueError("Open a PDF before adding a counts sheet")
+        if not isinstance(payload, dict):
+            raise ValueError("counts must be an object")
+        scope = payload.get("scope") or "sheet"
+        if scope not in ("sheet", "all"):
+            raise ValueError("bad counts scope")
+        rows = parse_count_rows(payload.get("rows"))
+        if not rows:
+            raise ValueError("There are no symbols to count")
+        try:
+            page_index = int(payload.get("page") or 0)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("bad counts page") from exc
+        with _FITZ:
+            if page_index < 0 or page_index >= self.doc.page_count:
+                page_index = 0
+            page = self.doc[page_index]
+            if scope == "all":
+                subtitle = "All sheets"
+            else:
+                number = str(page_index + 1)
+                label = (page.get_label() or "").strip()
+                subtitle = label if label and label != number else f"Sheet {number}"
+            raw = build_counts_pdf(rows, page.rect.width, page.rect.height, subtitle)
+            other = pymupdf.open(stream=raw, filetype="pdf")
+            try:
+                added = other.page_count
+                self.doc.insert_pdf(other)
+                self.data = self.doc.tobytes(deflate=True, garbage=3)
+                self.doc_id = hashlib.sha256(self.data).hexdigest()[:16]
+                self.cache.clear()
+            finally:
+                other.close()
+        info = self.info()
+        info["added"] = added
+        return info
+
     def render_page(self, index: int, dpi: float) -> bytes:
         with _FITZ:
             if self.doc is None:
@@ -193,7 +233,8 @@ class Session:
     def export(self, placements, symbols_by_id) -> tuple[bytes, str]:
         if self.data is None or self.doc is None:
             raise ValueError("No PDF is open")
-        parsed = parse_placements(placements, self.doc.page_count, set(symbols_by_id))
+        run_ids = {sid for sid, sym in symbols_by_id.items() if sym.get("place") == "run"}
+        parsed = parse_placements(placements, self.doc.page_count, set(symbols_by_id), run_ids)
         with _FITZ:
             pdf = export_pdf(self.data, parsed, symbols_by_id)
         return pdf, _marked_name(self.filename)
@@ -218,6 +259,8 @@ class App:
                     "name": item["name"],
                     "category": item["category"],
                     "wall": item["wall"],
+                    "place": item.get("place") or "point",
+                    "runLabel": item.get("runLabel") or "",
                     "keywords": item["keywords"],
                     "hint": item["hint"],
                     "defaultColor": item["defaultColor"],
@@ -336,6 +379,16 @@ def _make_handler(app: App):
                     self._json(400, {"error": str(exc)})
                     return
                 print(f"added legend ({info.get('added', 0)} sheets)")
+                self._json(200, info)
+                return
+            if path == "/api/counts":
+                try:
+                    payload = json.loads(body.decode("utf-8") or "{}")
+                    info = app.session.append_counts(payload)
+                except (ValueError, json.JSONDecodeError, UnicodeDecodeError) as exc:
+                    self._json(400, {"error": str(exc)})
+                    return
+                print(f"added counts ({info.get('added', 0)} sheets)")
                 self._json(200, info)
                 return
             if path == "/api/export":

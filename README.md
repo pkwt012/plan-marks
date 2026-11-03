@@ -6,7 +6,7 @@ Open a plan, click a symbol, then click the sheet. Drag a mark to move it, drag 
 
 ## Windows
 
-Download [Plan Marks 1.1 for Windows](https://github.com/pkwt012/plan-marks/releases/download/v1.1/PlanMarks-Windows.zip). Unzip the folder and double-click `PlanMarks.exe`. Your browser opens the plan marker. Leave the small Plan Marks window open while you work, and close it to quit. Keep `PlanMarks.exe` and the `_internal` folder together.
+Download [Plan Marks 1.2 for Windows](https://github.com/pkwt012/plan-marks/releases/download/v1.2/PlanMarks-Windows.zip). Unzip the folder and double-click `PlanMarks.exe`. Your browser opens the plan marker. Leave the small Plan Marks window open while you work, and close it to quit. Keep `PlanMarks.exe` and the `_internal` folder together.
 
 Windows may say it protected your PC, because the program is not signed. Choose More info, then Run anyway.
 
@@ -37,6 +37,9 @@ PyMuPDF is the only dependency. There is no account, no upload, and no network c
 - **Note** puts text on the sheet. Click where the note should sit, then type. Drag it off to the side. The size slider changes the type size.
 - **Arrow** points at the work, the same way a dashed line is drawn. Click the tail, then click where the arrow points. The head is on the second point. Esc cancels that arrow, then puts the tool away. Drag the shaft to move it, or drag an amber end to change it.
 - **Dashed line** draws a switch leg between lights. Click the first point, then the next. It stays armed so you can draw another. Esc cancels the segment, then puts the tool away. Drag a finished line to move it, or drag an amber end to change it.
+- **Under cabinet 120V** and **LED tape light** are runs. Click one end, then the other. A solid line with end bars is drawn between the clicks, and 120V or TAPE sits under the line. The tool stays armed. Esc cancels the run, then puts it away.
+- **Apply size to all** copies the selected symbol’s size onto the other marks of that type. Choose this sheet or every sheet. Undo puts the old sizes back. Notes, arrows, dashed lines, legends, and runs are left alone.
+- **Counts** lists how many of each symbol are placed. Switch between this sheet and all sheets. **Add counts sheet** puts that list on a new page of the plan.
 - **Drop legend** places a key of every symbol on the current sheet. Drag it to a clear spot. The width slider scales it. The header **Legend** button still adds a full sheet with the longer descriptions.
 - **Try the sample plan** is a two-sheet house drawn at 1/4" = 1'-0", with a 10 ft dimension for calibration.
 - Click a palette symbol to arm it, then click the plan. Click the symbol again, or press Esc, to stop placing.

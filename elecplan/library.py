@@ -94,6 +94,16 @@ def load_symbols(folder: Path | None = None) -> dict:
         color = entry.get("defaultColor") or INK
         if not _HEX.fullmatch(color):
             raise ValueError(f"{sid} has a bad defaultColor")
+        place = entry.get("place") or "point"
+        if place not in ("point", "run"):
+            raise ValueError(f"{sid} has a bad place")
+        run_label = ""
+        if place == "run":
+            run_label = str(entry.get("runLabel") or "").strip()
+            if not run_label or len(run_label) > 16:
+                raise ValueError(f"{sid} needs a short runLabel")
+            if any(ord(ch) < 32 or ch in "<>&" for ch in run_label):
+                raise ValueError(f"{sid} has a bad runLabel")
         known_files.add(filename)
         by_id[sid] = {
             "id": sid,
@@ -101,6 +111,8 @@ def load_symbols(folder: Path | None = None) -> dict:
             "category": entry.get("category") or "custom",
             "file": filename,
             "wall": bool(entry.get("wall", False)),
+            "place": place,
+            "runLabel": run_label,
             "keywords": entry.get("keywords") or "",
             "hint": entry.get("hint") or "",
             "defaultColor": color.lower(),
