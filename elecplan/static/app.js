@@ -36,6 +36,7 @@ const state = {
   lineDraft: null,
   arrowDraft: null,
   runDraft: null,
+  layoutDraft: null,
   noteSize: 12,
   undo: [],
   redo: [],
@@ -277,6 +278,7 @@ function updatePager() {
   $("lineBtn").disabled = false;
   $("noteBtn").disabled = false;
   $("arrowBtn").disabled = false;
+  $("layoutBtn").disabled = false;
   $("dropLegendBtn").disabled = false;
 }
 
@@ -318,6 +320,10 @@ function goToPage(index) {
   if (state.runDraft) {
     state.runDraft = null;
     toast("Run cancelled because the sheet changed.");
+  }
+  if (state.layoutDraft) {
+    state.layoutDraft = null;
+    toast("Light layout cancelled because the sheet changed.");
   }
   showPage(index, { fit: refit });
   syncInspector();
@@ -583,7 +589,7 @@ function addWireLine(parent, p, className, color, width, events, dashed) {
   line.setAttribute("y2", p.y2);
   line.setAttribute("stroke", color);
   line.setAttribute("stroke-width", String(width));
-  if (dashed) line.setAttribute("stroke-dasharray", "8 6");
+  if (dashed) line.setAttribute("stroke-dasharray", dashed === true ? "8 6" : String(dashed));
   line.setAttribute("stroke-linecap", "butt");
   line.setAttribute("fill", "none");
   if (events) line.setAttribute("pointer-events", events);
@@ -646,10 +652,12 @@ function wireGroup(p, draft) {
   }
   const arrow = p.kind === "arrow";
   const shaft = arrow ? arrowParts(p) : p;
+  const dash = arrow ? false : (p.guide ? "2.5 2.5" : true);
+  const inkWidth = p.guide ? 0.9 : 1.35;
   if (!draft && p.id === state.selectedId) {
-    addWireLine(g, p, "wire-halo", "#e2a23a", 3.4, "none", !arrow);
+    addWireLine(g, p, "wire-halo", "#e2a23a", 3.4, "none", dash);
   }
-  addWireLine(g, shaft, "wire-ink", color, 1.35, "none", !arrow);
+  addWireLine(g, shaft, "wire-ink", color, inkWidth, "none", dash);
   if (arrow) addArrowHead(g, p, color, draft ? "none" : "all");
   if (!draft) {
     const hit = addWireLine(g, p, "wire-hit", "#141414", metrics.hit, "stroke", false);
@@ -673,7 +681,8 @@ function handleGroup(p) {
     dot.setAttribute("cx", x);
     dot.setAttribute("cy", y);
     dot.setAttribute("r", String(radius));
-    dot.setAttribute("fill", "#e2a23a");
+    const anchored = p.kind === "line" && ((end === "1" && p.a1) || (end === "2" && p.a2));
+    dot.setAttribute("fill", anchored ? "#1d4e89" : "#e2a23a");
     dot.setAttribute("stroke", "#2a1c06");
     dot.setAttribute("stroke-width", String(1 / state.zoom));
     g.appendChild(dot);
@@ -701,6 +710,9 @@ function renderWires() {
   }
   if (state.runDraft && state.runDraft.page === state.pageIndex) {
     wires.appendChild(wireGroup(state.runDraft, true));
+  }
+  if (state.layoutDraft && state.layoutDraft.page === state.pageIndex) {
+    addLayoutDraft(wires);
   }
 }
 
@@ -769,10 +781,12 @@ function updateLine(p) {
     if (first) {
       first.setAttribute("cx", p.x1);
       first.setAttribute("cy", p.y1);
+      if (p.kind === "line") first.setAttribute("fill", p.a1 ? "#1d4e89" : "#e2a23a");
     }
     if (second) {
       second.setAttribute("cx", p.x2);
       second.setAttribute("cy", p.y2);
+      if (p.kind === "line") second.setAttribute("fill", p.a2 ? "#1d4e89" : "#e2a23a");
     }
   }
 }
@@ -840,6 +854,7 @@ function updateMark(p) {
     updateLine(p);
     return;
   }
+  followAnchors(p);
   if (p.kind === "legend") {
     updateLegend(p);
     return;
@@ -1016,6 +1031,16 @@ function applyProject(proj, { quiet = false } = {}) {
         color,
       };
       if (item.kind === "run") mark.symbolId = item.symbolId;
+      if (item.kind === "line") {
+        if (item.guide === true) {
+          mark.guide = true;
+          mark.a1 = null;
+          mark.a2 = null;
+        } else {
+          mark.a1 = typeof item.a1 === "string" ? item.a1 : null;
+          mark.a2 = typeof item.a2 === "string" ? item.a2 : null;
+        }
+      }
       placements.push(mark);
       continue;
     }
@@ -1075,6 +1100,7 @@ function applyProject(proj, { quiet = false } = {}) {
     });
   }
   state.placements = placements;
+  sanitizeAnchors();
   if (proj.defaultSize) state.defaultSize = clamp(Number(proj.defaultSize) || 28, 10, 160);
   state.calibration = proj.calibration || null;
   state.selectedId = null;
@@ -1185,6 +1211,7 @@ function clearDrawingTools() {
   state.lineDraft = null;
   state.arrowDraft = null;
   state.runDraft = null;
+  state.layoutDraft = null;
   state.calibStep = 0;
   state.calibDraft = null;
 }
@@ -1234,19 +1261,24 @@ function syncInspector() {
   if (state.calibStep === 1) hint.textContent = "Click the first end of a known length.";
   else if (state.calibStep === 2) hint.textContent = "Click the other end.";
   else if (state.calibStep === 3) hint.textContent = "Enter how long that distance is, then Apply.";
-  else if (state.tool === "line" && state.lineDraft) hint.textContent = "Click the next point. Esc cancels this segment.";
-  else if (state.tool === "line") hint.textContent = "Click the first point of a dashed line. Esc puts the tool away.";
+  else if (state.tool === "line" && state.lineDraft) hint.textContent = "Click the next point. A point on a symbol stays attached. Esc cancels this segment.";
+  else if (state.tool === "line") hint.textContent = "Click the first point of a dashed line. Snap it to a symbol to keep that end attached. Esc puts the tool away.";
+  else if (state.tool === "layout" && state.layoutDraft) hint.textContent = "Click the opposite corner. Hold Shift for a square. Esc cancels this rectangle.";
+  else if (state.tool === "layout") hint.textContent = "Click one corner, then the opposite corner. This draws a construction line. Symbols snap onto it. Esc puts the tool away.";
   else if (state.tool === "arrow" && state.arrowDraft) hint.textContent = "Click where the arrow points. Esc cancels this arrow.";
   else if (state.tool === "arrow") hint.textContent = "Click the first point, then click where the arrow points. Esc puts the tool away.";
   else if (state.tool === "run" && state.runDraft) hint.textContent = "Click the other end. Esc cancels this run.";
   else if (state.tool === "run") hint.textContent = (sym && sym.hint) || "Click one end, then the other. Esc puts the tool away.";
-  else if (state.tool === "note") hint.textContent = "Click the sheet, then type the note. Esc puts the tool away.";
+  else if (state.tool === "note") hint.textContent = "Click the sheet, then type a short label. A note is text, so it stays out of the symbol legend and the counts.";
   else if (state.tool === "legend") hint.textContent = "Click the sheet to drop a legend of every symbol.";
   else if (sym) hint.textContent = sym.hint || `Click the plan to place ${sym.name}. Esc puts the tool away.`;
-  else if (p && p.kind === "line") hint.textContent = "Drag the line to move it. Drag an amber end to change it.";
+  else if (p && p.kind === "line" && p.guide) hint.textContent = "Construction line. Click a symbol, then click the line to place it. Drag the line to move it.";
+  else if (p && p.kind === "line") hint.textContent = p.a1 || p.a2
+    ? "A blue end stays on its symbol. Drag that end away to disconnect it. Dragging the line also disconnects it."
+    : "Drag the line to move it. Drag an amber end to change it.";
   else if (p && p.kind === "arrow") hint.textContent = "Drag the arrow to move it. Drag an amber end to change it.";
   else if (p && p.kind === "run") hint.textContent = "Drag the run to move it. Drag an amber end to change its length.";
-  else if (p && p.kind === "note") hint.textContent = "Edit the note here. Drag it on the sheet.";
+  else if (p && p.kind === "note") hint.textContent = "Edit the label here. Drag it on the sheet. Notes are not listed in the legend or the counts.";
   else if (p && p.kind === "legend") hint.textContent = "Drag the legend. The slider changes how wide it is.";
   else if (p) hint.textContent = symbolsById[p.symbolId] ? symbolsById[p.symbolId].hint : "Drag to move. Drag the handle to rotate.";
   else hint.textContent = state.doc ? "Pick a symbol, then click the sheet." : "Open a plan, pick a symbol, then click the sheet to place it.";
@@ -1313,6 +1345,8 @@ function syncInspector() {
   $("arrowBtn").setAttribute("aria-pressed", state.tool === "arrow" ? "true" : "false");
   $("noteBtn").classList.toggle("active", state.tool === "note");
   $("noteBtn").setAttribute("aria-pressed", state.tool === "note" ? "true" : "false");
+  $("layoutBtn").classList.toggle("active", state.tool === "layout");
+  $("layoutBtn").setAttribute("aria-pressed", state.tool === "layout" ? "true" : "false");
   $("dropLegendBtn").classList.toggle("active", state.tool === "legend");
   $("dropLegendBtn").setAttribute("aria-pressed", state.tool === "legend" ? "true" : "false");
 
@@ -1533,6 +1567,10 @@ function duplicatePlacement(p, dx, dy) {
     copy.y1 = p.y1 + dy;
     copy.x2 = p.x2 + dx;
     copy.y2 = p.y2 + dy;
+    if (copy.kind === "line") {
+      copy.a1 = null;
+      copy.a2 = null;
+    }
   } else {
     copy.x = p.x + dx;
     copy.y = p.y + dy;
@@ -1565,6 +1603,7 @@ function deleteSelected() {
   const p = selected();
   if (!p) return;
   pushUndo();
+  releaseAnchors(p.id);
   state.placements = state.placements.filter((item) => item.id !== p.id);
   state.selectedId = null;
   renderMarks();
@@ -1579,14 +1618,15 @@ function placeAt(cx, cy) {
   if (!sym || !page) return;
   const pt = clientToPdf(cx, cy);
   if (pt.x < -40 || pt.y < -40 || pt.x > page.width + 40 || pt.y > page.height + 40) return;
+  const snapped = snapToGuide(pt, state.pageIndex) || pt;
   pushUndo();
   const mark = {
     id: uid(),
     kind: "symbol",
     symbolId: sym.id,
     page: state.pageIndex,
-    x: pt.x,
-    y: pt.y,
+    x: snapped.x,
+    y: snapped.y,
     size: state.defaultSize,
     rotation: 0,
     color: state.ink || sym.defaultColor || "#141414",
@@ -1693,16 +1733,193 @@ function snapPoint(pt, excludeId) {
   let bestD = 14;
   for (const item of state.placements) {
     if (item.page !== state.pageIndex || item.id === excludeId) continue;
-    const points = isSegment(item) ? [[item.x1, item.y1], [item.x2, item.y2]] : item.kind === "legend" ? [] : [[item.x, item.y]];
-    for (const [x, y] of points) {
-      const dist = Math.hypot(pt.x - x, pt.y - y);
-      if (dist < bestD) {
-        bestD = dist;
-        best = { x, y };
+    if (isSegment(item)) {
+      for (const [x, y] of [[item.x1, item.y1], [item.x2, item.y2]]) {
+        const dist = Math.hypot(pt.x - x, pt.y - y);
+        if (dist < bestD) {
+          bestD = dist;
+          best = { x, y, anchorId: null };
+        }
       }
+      continue;
+    }
+    if (item.kind === "legend" || !Number.isFinite(item.x) || !Number.isFinite(item.y)) continue;
+    const dist = Math.hypot(pt.x - item.x, pt.y - item.y);
+    if (dist < bestD) {
+      bestD = dist;
+      best = { x: item.x, y: item.y, anchorId: item.id };
     }
   }
-  return best || pt;
+  return best || { x: pt.x, y: pt.y, anchorId: null };
+}
+
+function projectOnSegment(pt, x1, y1, x2, y2) {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const len2 = dx * dx + dy * dy;
+  if (len2 < 0.01) return { x: x1, y: y1, dist: Math.hypot(pt.x - x1, pt.y - y1) };
+  const t = Math.max(0, Math.min(1, ((pt.x - x1) * dx + (pt.y - y1) * dy) / len2));
+  const x = x1 + t * dx;
+  const y = y1 + t * dy;
+  return { x, y, dist: Math.hypot(pt.x - x, pt.y - y) };
+}
+
+function snapToGuide(pt, page) {
+  let best = null;
+  let bestD = 14;
+  for (const item of state.placements) {
+    if (item.kind !== "line" || !item.guide || item.page !== page) continue;
+    const hit = projectOnSegment(pt, item.x1, item.y1, item.x2, item.y2);
+    if (hit.dist < bestD) {
+      bestD = hit.dist;
+      best = { x: hit.x, y: hit.y };
+    }
+  }
+  return best;
+}
+
+function anchorTarget(id, line) {
+  if (typeof id !== "string" || !id || id.length > 80 || !line) return null;
+  const target = state.placements.find((item) => item.id === id);
+  if (!target || target.id === line.id || target.page !== line.page) return null;
+  if (isSegment(target) || target.kind === "legend") return null;
+  if (!Number.isFinite(target.x) || !Number.isFinite(target.y)) return null;
+  return target;
+}
+
+function sanitizeAnchors() {
+  for (const line of state.placements) {
+    if (line.kind !== "line" || line.guide) continue;
+    const first = anchorTarget(line.a1, line);
+    const second = anchorTarget(line.a2, line);
+    line.a1 = first ? first.id : null;
+    line.a2 = second ? second.id : null;
+    if (first) {
+      line.x1 = first.x;
+      line.y1 = first.y;
+    }
+    if (second) {
+      line.x2 = second.x;
+      line.y2 = second.y;
+    }
+  }
+}
+
+function followAnchors(mark) {
+  if (!mark || isSegment(mark) || mark.kind === "legend") return;
+  for (const line of state.placements) {
+    if (line.kind !== "line" || line.guide || line.page !== mark.page) continue;
+    let hit = false;
+    if (line.a1 === mark.id) {
+      line.x1 = mark.x;
+      line.y1 = mark.y;
+      hit = true;
+    }
+    if (line.a2 === mark.id) {
+      line.x2 = mark.x;
+      line.y2 = mark.y;
+      hit = true;
+    }
+    if (hit) updateLine(line);
+  }
+}
+
+function releaseAnchors(id) {
+  for (const line of state.placements) {
+    if (line.kind !== "line") continue;
+    if (line.a1 === id) line.a1 = null;
+    if (line.a2 === id) line.a2 = null;
+  }
+}
+
+function squareCorner(x1, y1, x2, y2) {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const side = Math.max(Math.abs(dx), Math.abs(dy));
+  const sx = dx === 0 ? 1 : Math.sign(dx);
+  const sy = dy === 0 ? 1 : Math.sign(dy);
+  return { x: x1 + sx * side, y: y1 + sy * side };
+}
+
+function addLayoutDraft(parent) {
+  const draft = state.layoutDraft;
+  if (!draft) return;
+  let x2 = draft.x2;
+  let y2 = draft.y2;
+  if (draft.square) {
+    const corner = squareCorner(draft.x1, draft.y1, x2, y2);
+    x2 = corner.x;
+    y2 = corner.y;
+  }
+  const corners = [
+    [draft.x1, draft.y1],
+    [x2, draft.y1],
+    [x2, y2],
+    [draft.x1, y2],
+  ];
+  for (let index = 0; index < corners.length; index += 1) {
+    const start = corners[index];
+    const end = corners[(index + 1) % corners.length];
+    addWireLine(parent, { x1: start[0], y1: start[1], x2: end[0], y2: end[1] }, "wire-ink", "#5c6570", 0.9, "none", "2.5 2.5");
+  }
+}
+
+function layoutClick(pt, shift) {
+  const page = currentPage();
+  if (!page || !onSheet(pt, page)) return;
+  if (!state.layoutDraft) {
+    state.layoutDraft = { page: state.pageIndex, x1: pt.x, y1: pt.y, x2: pt.x, y2: pt.y, square: false };
+    renderWires();
+    syncInspector();
+    setStatus();
+    return;
+  }
+  let x2 = pt.x;
+  let y2 = pt.y;
+  if (shift) {
+    const corner = squareCorner(state.layoutDraft.x1, state.layoutDraft.y1, x2, y2);
+    x2 = corner.x;
+    y2 = corner.y;
+  }
+  const left = Math.min(state.layoutDraft.x1, x2);
+  const right = Math.max(state.layoutDraft.x1, x2);
+  const top = Math.min(state.layoutDraft.y1, y2);
+  const bottom = Math.max(state.layoutDraft.y1, y2);
+  if (right - left < 8 || bottom - top < 8) {
+    toast("That layout is too small. Click the opposite corner.");
+    return;
+  }
+  pushUndo();
+  const corners = [
+    [left, top],
+    [right, top],
+    [right, bottom],
+    [left, bottom],
+  ];
+  for (let index = 0; index < corners.length; index += 1) {
+    const start = corners[index];
+    const end = corners[(index + 1) % corners.length];
+    state.placements.push({
+      id: uid(),
+      kind: "line",
+      page: state.layoutDraft.page,
+      x1: start[0],
+      y1: start[1],
+      x2: end[0],
+      y2: end[1],
+      color: "#5c6570",
+      a1: null,
+      a2: null,
+      guide: true,
+    });
+  }
+  state.layoutDraft = null;
+  state.selectedId = null;
+  renderMarks();
+  syncInspector();
+  scheduleSave();
+  setStatus();
+  toast("Construction rectangle added. Click a symbol, then click the line to place it.");
 }
 
 function onSheet(pt, page) {
@@ -1728,6 +1945,7 @@ function segmentClick(pt, kind) {
       color: state.ink || (sym && sym.defaultColor) || "#141414",
     };
     if (kind === "run") state[key].symbolId = sym.id;
+    if (kind === "line") state[key].a1 = snapped.anchorId || null;
     renderWires();
     syncInspector();
     setStatus();
@@ -1755,6 +1973,10 @@ function segmentClick(pt, kind) {
     color: draft.color,
   };
   if (kind === "run") mark.symbolId = draft.symbolId;
+  if (kind === "line") {
+    mark.a1 = draft.a1 || null;
+    mark.a2 = snapped.anchorId || null;
+  }
   state.placements.push(mark);
   state.selectedId = mark.id;
   state[key] = null;
@@ -1881,9 +2103,10 @@ function onPointerDown(e) {
   }
   if (e.button !== 0) return;
   const pt = clientToPdf(e.clientX, e.clientY);
-  if (state.tool === "line" || state.tool === "arrow" || state.tool === "run") {
+  if (state.tool === "line" || state.tool === "arrow" || state.tool === "run" || state.tool === "layout") {
     e.preventDefault();
-    segmentClick(pt, state.tool);
+    if (state.tool === "layout") layoutClick(pt, e.shiftKey);
+    else segmentClick(pt, state.tool);
     return;
   }
   const end = e.target.closest(".wire-end");
@@ -1953,6 +2176,12 @@ function onPointerMove(e) {
       draft.y2 = snapped.y;
       renderWires();
     }
+    if (state.layoutDraft && state.layoutDraft.page === state.pageIndex && !state.drag) {
+      state.layoutDraft.x2 = pt.x;
+      state.layoutDraft.y2 = pt.y;
+      state.layoutDraft.square = e.shiftKey;
+      renderWires();
+    }
   }
   const drag = state.drag;
   if (!drag) return;
@@ -1966,6 +2195,7 @@ function onPointerMove(e) {
     const p = placement(drag.id);
     if (!isSegment(p)) return;
     const pdf = snapPoint(clientToPdf(e.clientX, e.clientY), p.id);
+    if (p.kind === "line" && !p.guide && pdf.anchorId && pdf.anchorId === (drag.end === "1" ? p.a2 : p.a1)) return;
     const nextX1 = drag.end === "1" ? pdf.x : p.x1;
     const nextY1 = drag.end === "1" ? pdf.y : p.y1;
     const nextX2 = drag.end === "1" ? p.x2 : pdf.x;
@@ -1980,6 +2210,10 @@ function onPointerMove(e) {
     p.y1 = nextY1;
     p.x2 = nextX2;
     p.y2 = nextY2;
+    if (p.kind === "line" && !p.guide) {
+      if (drag.end === "1") p.a1 = pdf.anchorId || null;
+      else p.a2 = pdf.anchorId || null;
+    }
     drag.moved = true;
     updateLine(p);
     return;
@@ -2001,9 +2235,22 @@ function onPointerMove(e) {
       p.y1 = drag.origin.y1 + dy;
       p.x2 = drag.origin.x2 + dx;
       p.y2 = drag.origin.y2 + dy;
+      if (p.kind === "line") {
+        p.a1 = null;
+        p.a2 = null;
+      }
     } else {
-      p.x = drag.origin.x + dx;
-      p.y = drag.origin.y + dy;
+      let x = drag.origin.x + dx;
+      let y = drag.origin.y + dy;
+      if (isSymbol(p)) {
+        const snapped = snapToGuide({ x, y }, p.page);
+        if (snapped) {
+          x = snapped.x;
+          y = snapped.y;
+        }
+      }
+      p.x = x;
+      p.y = y;
     }
     updateMark(p);
     return;
@@ -2056,7 +2303,9 @@ function setStatus() {
     else if (state.calibStep === 2) left = "Calibrate: click the second point";
     else if (state.calibStep === 3) left = "Enter that length, then Apply";
     else if (state.tool === "line" && state.lineDraft) left = "Dashed line: click the next point. Esc cancels this segment.";
-    else if (state.tool === "line") left = "Dashed line: click the first point. Esc puts the tool away.";
+    else if (state.tool === "line") left = "Dashed line: click the first point. Snap to a symbol to stay attached.";
+    else if (state.tool === "layout" && state.layoutDraft) left = "Light layout: click the opposite corner. Shift makes a square.";
+    else if (state.tool === "layout") left = "Light layout: click two corners to draw a construction rectangle.";
     else if (state.tool === "arrow" && state.arrowDraft) left = "Arrow: click where it points. Esc cancels this arrow.";
     else if (state.tool === "arrow") left = "Arrow: click the first point, then where it points.";
     else if (state.tool === "run" && state.runDraft) left = "Run: click the other end. Esc cancels this run.";
@@ -2068,8 +2317,15 @@ function setStatus() {
     else if (state.tool === "legend") left = "Click the sheet to drop the legend.";
     else if (state.armedId) {
       const sym = symbolsById[state.armedId];
-      left = `Placing ${sym ? sym.name : "symbol"}. Click the plan. Esc cancels.`;
-    } else if (selected() && selected().kind === "line") left = "Drag the line to move it. Drag an end to reshape it.";
+      const name = sym ? sym.name : "symbol";
+      const guides = state.placements.some((item) => item.kind === "line" && item.guide && item.page === state.pageIndex);
+      left = guides
+        ? `Placing ${name}. Click the plan. A click near a construction line snaps onto it.`
+        : `Placing ${name}. Click the plan. Esc cancels.`;
+    } else if (selected() && selected().kind === "line" && selected().guide) left = "Construction line. Place a symbol on it, or drag the line to move it.";
+    else if (selected() && selected().kind === "line") left = selected().a1 || selected().a2
+      ? "Blue ends stay attached. Drag an end off its symbol to disconnect it."
+      : "Drag the line to move it. Drag an end to reshape it.";
     else if (selected() && selected().kind === "arrow") left = "Drag the arrow to move it. Drag an end to reshape it.";
     else if (selected() && selected().kind === "run") left = "Drag the run to move it. Drag an end to change its length.";
     else if (selected() && selected().kind === "note") left = "Edit the note in the side panel. Drag it on the sheet.";
@@ -2116,6 +2372,7 @@ async function openPdfBytes(buf, filename, { append = false } = {}) {
     state.lineDraft = null;
     state.arrowDraft = null;
     state.runDraft = null;
+    state.layoutDraft = null;
     state.calibration = null;
     state.calibStep = 0;
     state.calibDraft = null;
@@ -2261,10 +2518,11 @@ function onKeyDown(e) {
   }
   if (e.key === "Escape") {
     if (state.calibStep) cancelCalib();
-    else if (state.lineDraft || state.arrowDraft || state.runDraft) {
+    else if (state.lineDraft || state.arrowDraft || state.runDraft || state.layoutDraft) {
       state.lineDraft = null;
       state.arrowDraft = null;
       state.runDraft = null;
+      state.layoutDraft = null;
       renderWires();
       syncInspector();
       setStatus();
@@ -2367,6 +2625,10 @@ function onKeyDown(e) {
       p.y1 += dy;
       p.x2 += dx;
       p.y2 += dy;
+      if (p.kind === "line") {
+        p.a1 = null;
+        p.a2 = null;
+      }
     } else {
       p.x += dx;
       p.y += dy;
@@ -2390,6 +2652,7 @@ function bind() {
   $("addBtn").addEventListener("click", () => $("fileAdd").click());
   $("legendBtn").addEventListener("click", () => addLegend());
   $("lineBtn").addEventListener("click", () => setTool("line"));
+  $("layoutBtn").addEventListener("click", () => setTool("layout"));
   $("arrowBtn").addEventListener("click", () => setTool("arrow"));
   $("noteBtn").addEventListener("click", () => setTool("note"));
   $("dropLegendBtn").addEventListener("click", () => setTool("legend"));
@@ -2473,6 +2736,7 @@ function bind() {
       state.lineDraft = null;
       state.arrowDraft = null;
       state.runDraft = null;
+      state.layoutDraft = null;
       state.calibStep = 1;
       state.calibDraft = null;
       renderPalette();

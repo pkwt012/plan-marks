@@ -99,6 +99,24 @@
       "hint": "Outlet marked 50A 240V. Rotate it so the bars follow the wall."
     },
     {
+      "id": "floor",
+      "name": "Floor plug",
+      "category": "receptacles",
+      "file": "floor.svg",
+      "wall": false,
+      "keywords": "floor plug receptacle outlet box",
+      "hint": "Square with two bars. This outlet sits in the floor, not on the wall."
+    },
+    {
+      "id": "eave",
+      "name": "Eave plug",
+      "category": "receptacles",
+      "file": "eave.svg",
+      "wall": true,
+      "keywords": "eave plug receptacle outlet christmas lights shade",
+      "hint": "Roof over an outlet. This plug sits up under the eave. Rotate the bars along the eave."
+    },
+    {
       "id": "switch",
       "name": "Single-pole switch",
       "category": "switches",
@@ -171,6 +189,15 @@
       "hint": "Semicircle. The flat side sits on the wall."
     },
     {
+      "id": "flood",
+      "name": "Flood light",
+      "category": "lighting",
+      "file": "flood.svg",
+      "wall": false,
+      "keywords": "flood light outdoor security fixture",
+      "hint": "Flood light. The beam shows which way it throws. Rotate the whole fixture."
+    },
+    {
       "id": "fan",
       "name": "Ceiling fan",
       "category": "lighting",
@@ -178,15 +205,6 @@
       "wall": false,
       "keywords": "ceiling fan paddle",
       "hint": "Place it on the ceiling, in the room."
-    },
-    {
-      "id": "ucl",
-      "name": "Under cabinet lights",
-      "category": "lighting",
-      "file": "ucl.svg",
-      "wall": false,
-      "keywords": "ucl under cabinet light lights strip",
-      "hint": "Under cabinet lights. Rotate the letters to follow the run."
     },
     {
       "id": "ucl120",
@@ -326,6 +344,15 @@
       "hint": "Box marked PANEL. Rotate the box to follow the wall."
     },
     {
+      "id": "generator",
+      "name": "Generator",
+      "category": "equipment",
+      "file": "generator.svg",
+      "wall": false,
+      "keywords": "generator gen standby backup power set",
+      "hint": "Box marked GEN. Place it where the generator sits."
+    },
+    {
       "id": "ac",
       "name": "A/C",
       "category": "equipment",
@@ -333,6 +360,24 @@
       "wall": true,
       "keywords": "ac a/c air conditioner hvac condensing",
       "hint": "Box marked A/C. Rotate the box to follow the wall."
+    },
+    {
+      "id": "heater",
+      "name": "Patio heater",
+      "category": "equipment",
+      "file": "heater.svg",
+      "wall": false,
+      "keywords": "patio heater ph heat lamp",
+      "hint": "Box marked PH. Place it where the patio heater sits."
+    },
+    {
+      "id": "floorheat",
+      "name": "Floor heat",
+      "category": "equipment",
+      "file": "floorheat.svg",
+      "wall": false,
+      "keywords": "floor heat radiant fh heating",
+      "hint": "Box marked FH. Place it in the room that has radiant floor heat."
     },
     {
       "id": "doorbell",

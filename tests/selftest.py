@@ -99,20 +99,35 @@ def main():
     check("a/c is a labeled box", "<rect" in ac["svg"] and ">A/C<" in ac["svg"])
     panel = next(item for item in lib["symbols"] if item["id"] == "panel")
     check("panel is a labeled box", "<rect" in panel["svg"] and ">PANEL<" in panel["svg"])
-    check("lighting additions", {"ucl", "pendant", "exhaust"} <= ids)
-    ucl = next(item for item in lib["symbols"] if item["id"] == "ucl")
+    check("lighting additions", {"pendant", "exhaust"} <= ids)
+    check("letter-only under cabinet mark is gone", "ucl" not in ids)
     pendant = next(item for item in lib["symbols"] if item["id"] == "pendant")
     exhaust = next(item for item in lib["symbols"] if item["id"] == "exhaust")
     fan = next(item for item in lib["symbols"] if item["id"] == "fan")
-    check("ucl is letters", ">UCL<" in ucl["svg"] and "<circle" not in ucl["svg"])
     ucl120 = next(item for item in lib["symbols"] if item["id"] == "ucl120")
     tape = next(item for item in lib["symbols"] if item["id"] == "ledtape")
     check("120V run is its own symbol", ucl120["place"] == "run" and ucl120["runLabel"] == "120V" and ">120V<" in ucl120["svg"])
     check("tape run is its own symbol", tape["place"] == "run" and tape["runLabel"] == "TAPE" and ">TAPE<" in tape["svg"])
-    check("ucl stays a point symbol", ucl.get("place") == "point")
     check("pendant hangs", "<circle" in pendant["svg"] and "<line" in pendant["svg"])
     check("bath fan is EF", ">EF<" in exhaust["svg"] and "<circle" in exhaust["svg"])
     check("bath fan is not the ceiling fan", "ellipse" in fan["svg"] and "ellipse" not in exhaust["svg"])
+    floor = next(item for item in lib["symbols"] if item["id"] == "floor")
+    flood = next(item for item in lib["symbols"] if item["id"] == "flood")
+    eave = next(item for item in lib["symbols"] if item["id"] == "eave")
+    ev = next(item for item in lib["symbols"] if item["id"] == "ev")
+    heater = next(item for item in lib["symbols"] if item["id"] == "heater")
+    floorheat = next(item for item in lib["symbols"] if item["id"] == "floorheat")
+    check("floor plug is a square outlet", "<rect" in floor["svg"] and "<line" in floor["svg"] and floor["wall"] is False)
+    check("flood light throws a beam", "<path" in flood["svg"] and "<circle" in flood["svg"])
+    check(
+        "eave plug is a roof over an outlet",
+        "<path" in eave["svg"] and "<circle" in eave["svg"] and ">E<" not in eave["svg"] and ">EV<" not in eave["svg"],
+    )
+    check("eave plug is not the ev outlet", eave["svg"] != ev["svg"] and ">EV<" in ev["svg"])
+    check("patio heater is a labeled box", ">PH<" in heater["svg"] and "<rect" in heater["svg"])
+    check("floor heat is a labeled box", ">FH<" in floorheat["svg"] and "<rect" in floorheat["svg"])
+    generator = next(item for item in lib["symbols"] if item["id"] == "generator")
+    check("generator is a labeled box", ">GEN<" in generator["svg"] and "<rect" in generator["svg"] and generator["place"] == "point")
     layout = legend_layout(lib["symbols"])
     check(
         "drop legend lists every symbol",
@@ -306,7 +321,7 @@ def main():
     parsed = parse_placements(
         [
             {"kind": "line", "page": 0, "x1": 30, "y1": 40, "x2": 290, "y2": 40, "color": "#141414"},
-            {"symbolId": "ucl", "page": 0, "x": 60, "y": 110, "size": 50, "rotation": 0, "color": "#141414"},
+            {"symbolId": "exhaust", "page": 0, "x": 60, "y": 110, "size": 50, "rotation": 0, "color": "#141414"},
         ],
         1,
         ids,
@@ -319,8 +334,41 @@ def main():
     light_runs = [length for dark, length in runs if not dark and length >= 3]
     check("dashed line has gaps", len(dark_runs) >= 2 and len(light_runs) >= 2, str(runs[:8]))
     check("dashed line stays on its path", dark_pixels(lined_pix, 40, 70, 80, 90) == 0)
-    check("line page still stamps UCL", "UCL" in lined_doc[0].get_text())
+    check("line page still stamps the bath fan", "EF" in lined_doc[0].get_text())
     lined_doc.close()
+
+    guide_parsed = parse_placements(
+        [
+            {"kind": "line", "page": 0, "x1": 30, "y1": 20, "x2": 290, "y2": 20, "color": "#141414", "guide": True},
+            {"kind": "line", "page": 0, "x1": 30, "y1": 70, "x2": 290, "y2": 70, "color": "#141414"},
+        ],
+        1,
+        ids,
+    )
+    check(
+        "construction line keeps the guide flag",
+        guide_parsed[0]["guide"] is True and guide_parsed[1]["guide"] is False,
+    )
+    guided = export_pdf(line_bytes, guide_parsed, by_id)
+    guided_doc = pymupdf.open(stream=guided, filetype="pdf")
+    guided_pix = guided_doc[0].get_pixmap(dpi=72, alpha=False)
+
+    def dash_count(pix, y0, y1):
+        best = []
+        for y in range(y0, y1 + 1):
+            found = [length for dark, length in dash_runs(pix, 40, 280, y) if dark and 1 <= length <= 12]
+            if len(found) > len(best):
+                best = found
+        return best
+
+    guide_runs = dash_count(guided_pix, 16, 24)
+    leg_runs = dash_count(guided_pix, 66, 74)
+    check(
+        "construction line is a finer dash",
+        len(guide_runs) > len(leg_runs) >= 2,
+        f"guide={len(guide_runs)} leg={len(leg_runs)}",
+    )
+    guided_doc.close()
 
     leg_parsed = parse_placements(
         [{"kind": "legend", "page": 0, "x": 12, "y": 12, "width": min(300, layout["width"])}],
@@ -335,7 +383,8 @@ def main():
     leg_view = pymupdf.open(stream=leg_pdf, filetype="pdf")
     leg_text = leg_view[0].get_text()
     check("dropped legend title", "SYMBOL LEGEND" in leg_text)
-    check("dropped legend names UCL", "Under cabinet lights" in leg_text)
+    check("dropped legend names the floor plug", "Floor plug" in leg_text)
+    check("dropped legend omits the letter mark", "Under cabinet lights" not in leg_text)
     check("dropped legend names the bath fan", "Bath exhaust fan" in leg_text)
     check("dropped legend names the pendant", "Pendant" in leg_text)
     leg_view[0].get_pixmap(dpi=110, alpha=False).save("/tmp/planmarks-tools.png")
@@ -602,8 +651,19 @@ def main():
 
     status, _headers, body = request(base, "/")
     check("home page", status == 200 and b"Plan Marks" in body, str(status))
+    check("layout help is a construction line", b"construction rectangle" in body)
     status, _headers, body = request(base, "/static/app.js")
-    check("script", status == 200 and b"function placeAt" in body and b"function addCountsSheet" in body)
+    check(
+        "script",
+        status == 200
+        and b"function placeAt" in body
+        and b"function addCountsSheet" in body
+        and b"function followAnchors" in body
+        and b"function layoutClick" in body
+        and b"function snapToGuide" in body
+        and b"guide: true" in body
+        and b"Recessed lights placed" not in body,
+    )
     status, _headers, body = request(base, "/api/symbols")
     payload = json.loads(body)
     check("symbols api", status == 200 and len(payload["symbols"]) >= 12)
@@ -666,7 +726,11 @@ def main():
     check("export stamps a dropped legend", "SYMBOL LEGEND" in exported[1].get_text())
     status, _headers, body = request(base, "/api/legend", method="POST")
     legend_info = json.loads(body)
-    check("legend sheet", status == 200 and legend_info["pageCount"] == 4, body[:200])
+    check(
+        "legend sheet",
+        status == 200 and legend_info.get("added", 0) >= 1 and legend_info["pageCount"] == 3 + legend_info["added"],
+        body[:200],
+    )
 
     empty_counts = json.dumps({"scope": "all", "page": 0, "rows": []}).encode()
     status, _headers, body = request(
@@ -695,7 +759,11 @@ def main():
         headers={"Content-Type": "application/json"},
     )
     counts_info = json.loads(body)
-    check("counts sheet added", status == 200 and counts_info["pageCount"] == 5, body[:200])
+    check(
+        "counts sheet added",
+        status == 200 and counts_info["pageCount"] == legend_info["pageCount"] + counts_info.get("added", 0),
+        body[:200],
+    )
     status, _headers, counts_pdf = request(
         base,
         "/api/export",
@@ -723,7 +791,12 @@ def main():
         method="POST",
         headers={"Content-Type": "application/json"},
     )
-    check("sheet counts added", status == 200 and json.loads(body)["pageCount"] == 6, body[:200])
+    sheet_info = json.loads(body)
+    check(
+        "sheet counts added",
+        status == 200 and sheet_info["pageCount"] == counts_info["pageCount"] + sheet_info.get("added", 0),
+        body[:200],
+    )
     status, _headers, sheet_pdf = request(
         base,
         "/api/export",
@@ -763,8 +836,13 @@ def main():
     check("legend title", "SYMBOL LEGEND" in legend_text)
     check("legend lists 30A outlet", "30A 240V outlet" in legend_text)
     check("legend lists smurf chase", "Smurf chase" in legend_text)
-    check("legend lists under cabinet lights", "Under cabinet lights" in legend_text)
+    check("legend omits the letter-only under cabinet mark", "Under cabinet lights" not in legend_text)
     check("legend lists the 120V run", "Under cabinet 120V" in legend_text and "LED tape light" in legend_text)
+    check(
+        "legend lists the estimator symbols",
+        all(name in legend_text for name in ("Floor plug", "Flood light", "Eave plug", "Patio heater", "Floor heat", "Generator")),
+        legend_text[-400:],
+    )
     block_pdf, _block_w, _block_h = build_legend_block(lib["symbols"])
     block_doc = pymupdf.open(stream=block_pdf, filetype="pdf")
     block_text = block_doc[0].get_text()

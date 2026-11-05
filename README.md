@@ -6,7 +6,7 @@ Open a plan, click a symbol, then click the sheet. Drag a mark to move it, drag 
 
 ## Windows
 
-Download [Plan Marks 1.2 for Windows](https://github.com/pkwt012/plan-marks/releases/download/v1.2/PlanMarks-Windows.zip). Unzip the folder and double-click `PlanMarks.exe`. Your browser opens the plan marker. Leave the small Plan Marks window open while you work, and close it to quit. Keep `PlanMarks.exe` and the `_internal` folder together.
+Download [Plan Marks 1.3 for Windows](https://github.com/pkwt012/plan-marks/releases/download/v1.3/PlanMarks-Windows.zip). Unzip the folder and double-click `PlanMarks.exe`. Your browser opens the plan marker. Leave the small Plan Marks window open while you work, and close it to quit. Keep `PlanMarks.exe` and the `_internal` folder together.
 
 Windows may say it protected your PC, because the program is not signed. Choose More info, then Run anyway.
 
@@ -34,9 +34,12 @@ PyMuPDF is the only dependency. There is no account, no upload, and no network c
 ## Use
 
 - **Open PDF** loads one file. **Add sheets** appends every page from another PDF. **Legend** adds a sheet that lists every symbol with its name and description.
-- **Note** puts text on the sheet. Click where the note should sit, then type. Drag it off to the side. The size slider changes the type size.
+- **Note** puts a short label on the sheet. Click where it should sit, then type. Drag it off to the side. The size slider changes the type size. A note is text, so it is left out of the symbol legend and the counts.
 - **Arrow** points at the work, the same way a dashed line is drawn. Click the tail, then click where the arrow points. The head is on the second point. Esc cancels that arrow, then puts the tool away. Drag the shaft to move it, or drag an amber end to change it.
-- **Dashed line** draws a switch leg between lights. Click the first point, then the next. It stays armed so you can draw another. Esc cancels the segment, then puts the tool away. Drag a finished line to move it, or drag an amber end to change it.
+- **Dashed line** draws a switch leg between lights. Click the first point, then the next. It stays armed so you can draw another. An end snapped onto a symbol stays attached when that symbol moves. A blue end is attached. Drag that end off the symbol, or drag the line itself, to disconnect it. Deleting the symbol also releases the line. Esc cancels the segment, then puts the tool away.
+- **Light layout** draws a construction rectangle. Click one corner, then the opposite corner. Hold Shift for a square. No symbols are placed. Click a symbol, then click the line, and the symbol snaps onto it.
+- **Floor plug**, **flood light**, **eave plug**, **patio heater**, and **floor heat** are in the symbol list.
+- **Generator** is a box marked GEN.
 - **Under cabinet 120V** and **LED tape light** are runs. Click one end, then the other. A solid line with end bars is drawn between the clicks, and 120V or TAPE sits under the line. The tool stays armed. Esc cancels the run, then puts it away.
 - **Apply size to all** copies the selected symbol’s size onto the other marks of that type. Choose this sheet or every sheet. Undo puts the old sizes back. Notes, arrows, dashed lines, legends, and runs are left alone.
 - **Counts** lists how many of each symbol are placed. Switch between this sheet and all sheets. **Add counts sheet** puts that list on a new page of the plan.

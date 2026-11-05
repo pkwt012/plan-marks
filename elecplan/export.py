@@ -57,6 +57,7 @@ def parse_placements(raw, page_count: int, symbol_ids: set[str], run_ids: set[st
                         "x2": x2,
                         "y2": y2,
                         "color": color,
+                        "guide": item.get("guide") is True,
                     }
                 )
                 continue
@@ -213,16 +214,17 @@ def _arrow_head(item: dict) -> tuple[float, float, float, float, float, float, f
 
 
 def _draw_line(page, item: dict) -> None:
-    """Dashed switch leg. Endpoints are visual; drawing uses unrotated space."""
+    """Dashed switch leg, or a finer construction line. Endpoints are visual."""
     matrix = page.derotation_matrix
     start = pymupdf.Point(item["x1"], item["y1"]) * matrix
     end = pymupdf.Point(item["x2"], item["y2"]) * matrix
+    guide = item.get("guide") is True
     page.draw_line(
         start,
         end,
         color=_rgb(item["color"]),
-        width=1.35,
-        dashes="[8 6] 0",
+        width=0.9 if guide else 1.35,
+        dashes="[2.5 2.5] 0" if guide else "[8 6] 0",
         lineCap=0,
         overlay=True,
     )

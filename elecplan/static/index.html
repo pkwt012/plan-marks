@@ -57,11 +57,14 @@
         <p id="toolHint" class="hint">Open a plan, pick a symbol, then click the sheet to place it.</p>
         <div class="tool-rows">
           <div class="tool-row">
-            <button type="button" id="noteBtn" title="Add a note. Click the sheet, then type." disabled>Note</button>
+            <button type="button" id="noteBtn" title="Add a short label. Click the sheet, then type. Notes stay out of the legend and the counts." disabled>Note</button>
             <button type="button" id="arrowBtn" title="Draw an arrow. Click the tail, then where it points." disabled>Arrow</button>
           </div>
           <div class="tool-row">
-            <button type="button" id="lineBtn" title="Draw a dashed line between lights. Click two points." disabled>Dashed line</button>
+            <button type="button" id="lineBtn" title="Draw a dashed line between lights. Snap an end to a symbol and it stays attached." disabled>Dashed line</button>
+            <button type="button" id="layoutBtn" title="Draw a construction rectangle. Click two opposite corners. Symbols snap onto the line. Shift makes a square." disabled>Light layout</button>
+          </div>
+          <div class="tool-row">
             <button type="button" id="dropLegendBtn" title="Drop a legend of every symbol on this sheet" disabled>Drop legend</button>
           </div>
         </div>
@@ -105,7 +108,7 @@
         </div>
         <div id="selectionBox" hidden>
           <label class="field" id="noteField" hidden>Note
-            <textarea id="noteText" rows="3" maxlength="500" aria-label="Note text" placeholder="Type the note"></textarea>
+            <textarea id="noteText" rows="3" maxlength="500" aria-label="Note text" placeholder="Short label"></textarea>
           </label>
           <label class="field" id="symbolField">Symbol
             <select id="symbolSelect" aria-label="Change symbol"></select>
@@ -177,9 +180,10 @@
       <li>Drag a mark to move it. Drag the amber handle to rotate the whole symbol. Hold Shift to snap to 15°.</li>
       <li>Letters turn with the symbol. Drag the dividers to resize the symbol list and the tools.</li>
       <li>Click a category name to show or hide its symbols.</li>
-      <li>Note places text on the sheet. Click where the note should sit, then type it. Drag the note off to the side.</li>
+      <li>Note places a short label on the sheet. Click where it should sit, then type it. Drag it off to the side. A note is text, so it is left out of the symbol legend and the counts.</li>
       <li>Arrow points at the work. Click the first point, then click where the arrow points. Esc cancels that arrow.</li>
-      <li>Dashed line connects lights. Click the first point, then the next. Esc cancels the segment.</li>
+      <li>Dashed line connects lights. Click the first point, then the next. An end snapped to a symbol stays there when the symbol moves. A blue end is attached. Drag that end away, or drag the line, to disconnect it. Esc cancels the segment.</li>
+      <li>Light layout draws a construction rectangle. Click one corner, then the opposite corner. Hold Shift for a square. No symbols are placed. Click a symbol, then click the line to put it on the rectangle.</li>
       <li>Under cabinet 120V and LED tape light are runs. Click one end, then the other. The words sit under the line. Esc cancels that run.</li>
       <li>Apply size to all copies the selected symbol’s size onto the other marks of that type. This sheet only is the usual choice. All sheets covers the whole plan.</li>
       <li>Counts lists each symbol that is on the plan. Add counts sheet puts that list on a new page.</li>
