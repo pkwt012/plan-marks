@@ -66,18 +66,18 @@ jobs:
           path: PlanMarks-Windows.zip
 
       - name: Publish the download
-        if: "${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && contains(github.event.head_commit.message, 'Release Plan Marks 1.3')) }}"
+        if: "${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && contains(github.event.head_commit.message, 'Release Plan Marks 1.4')) }}"
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.3
-          name: Plan Marks 1.3
+          tag_name: v1.4
+          name: Plan Marks 1.4
           make_latest: "true"
           files: PlanMarks-Windows.zip
           body: |
-            Plan Marks 1.3. Unzip the folder, then double-click PlanMarks.exe.
+            Plan Marks 1.4. Unzip the folder, then double-click PlanMarks.exe.
             Leave the small Plan Marks window open while you work. Close it to quit.
             Keep PlanMarks.exe and the _internal folder together.
             Your PDFs stay on this computer.
             If Windows says it protected your PC, choose More info, then Run anyway.
 
-            A dashed line can stay attached to a symbol. Light layout draws a construction rectangle, and a symbol snaps onto that line. New symbols are the floor plug, flood light, eave plug, patio heater, floor heat, and generator. The letter-only under-cabinet mark is gone. Under-cabinet 120V and LED tape remain.
+            Exported symbols keep the rotation you set, including on plan sheets that are stored sideways. The legend stays upright on those sheets too.
