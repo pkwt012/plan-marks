@@ -57,6 +57,19 @@ def dark_pixels(pix, x0, y0, x1, y1):
     return count
 
 
+def pixmap_diff(a, ax, ay, b, bx, by, pad):
+    """Mean channel difference of two square crops. 0 is the same picture."""
+    total = 0
+    count = 0
+    for y in range(-pad, pad):
+        for x in range(-pad, pad):
+            pa = a.pixel(int(ax + x), int(ay + y))
+            pb = b.pixel(int(bx + x), int(by + y))
+            total += abs(pa[0] - pb[0]) + abs(pa[1] - pb[1]) + abs(pa[2] - pb[2])
+            count += 3
+    return total / count
+
+
 def text_dirs(page, needle):
     found = []
     data = page.get_text("dict")
@@ -290,9 +303,99 @@ def main():
     check("rotated sheet: symbol at visual center", center_ink > 15, f"center={center_ink}")
     check("rotated sheet: corner stays blank", corner_ink == 0, f"corner={corner_ink}")
     check("original text survives stamping", "HELLO" in stamped_doc[0].get_text())
-    s3_dirs = text_dirs(stamped_doc[0], "S3")
-    check("S3 stays upright on a rotated sheet", bool(s3_dirs) and abs(s3_dirs[0][1][0]) > 0.9, str(s3_dirs))
     stamped_doc.close()
+
+    # The spin is what was on screen. A sheet stored with /Rotate must not
+    # turn the symbol again when a viewer honors that flag.
+    plain = pymupdf.open()
+    plain.new_page(width=200, height=200)
+    plain_bytes = plain.tobytes()
+    plain.close()
+
+    def spun_sheet(page_rot):
+        src = pymupdf.open()
+        src.new_page(width=360, height=240)
+        if page_rot:
+            src[0].set_rotation(page_rot)
+        raw = src.tobytes()
+        rect = pymupdf.Rect(src[0].rect)
+        src.close()
+        return raw, rect
+
+    def one_symbol(pdf, symbol, rotation, x, y):
+        data = export_pdf(
+            pdf,
+            [
+                {
+                    "symbolId": symbol,
+                    "page": 0,
+                    "x": x,
+                    "y": y,
+                    "size": 64,
+                    "rotation": rotation,
+                    "color": "#141414",
+                }
+            ],
+            by_id,
+        )
+        doc = pymupdf.open(stream=data, filetype="pdf")
+        pix = doc[0].get_pixmap(dpi=72, alpha=False)
+        doc.close()
+        return pix
+
+    screen = {angle: one_symbol(plain_bytes, "panel", angle, 100, 100) for angle in (0, 20, 90)}
+    for page_rot in (0, 90, 180, 270):
+        raw, rect = spun_sheet(page_rot)
+        cx, cy = rect.width / 2, rect.height / 2
+        for angle in (0, 20, 90):
+            pix = one_symbol(raw, "panel", angle, cx, cy)
+            same = pixmap_diff(pix, cx, cy, screen[angle], 100, 100, 30)
+            other_angle = 0 if angle == 90 else 90
+            other = pixmap_diff(pix, cx, cy, screen[other_angle], 100, 100, 30)
+            check(
+                f"sheet /Rotate {page_rot}: panel at {angle}° matches the screen",
+                same < 2.5 and same + 2 < other,
+                f"same={same:.2f} other={other:.2f}",
+            )
+
+    # Two sheets in one export, different /Rotate. They must not share a stamp.
+    mixed = pymupdf.open()
+    mixed.new_page(width=200, height=200)
+    mixed.new_page(width=360, height=240)
+    mixed[1].set_rotation(270)
+    mixed_bytes = mixed.tobytes()
+    mixed_rect = pymupdf.Rect(mixed[1].rect)
+    mixed.close()
+    mixed_pdf = export_pdf(
+        mixed_bytes,
+        [
+            {"symbolId": "panel", "page": 0, "x": 100, "y": 100, "size": 64, "rotation": 0, "color": "#141414"},
+            {
+                "symbolId": "panel",
+                "page": 1,
+                "x": mixed_rect.width / 2,
+                "y": mixed_rect.height / 2,
+                "size": 64,
+                "rotation": 90,
+                "color": "#141414",
+            },
+        ],
+        by_id,
+    )
+    mixed_doc = pymupdf.open(stream=mixed_pdf, filetype="pdf")
+    mixed_flat = mixed_doc[0].get_pixmap(dpi=72, alpha=False)
+    mixed_turned = mixed_doc[1].get_pixmap(dpi=72, alpha=False)
+    flat_diff = pixmap_diff(mixed_flat, 100, 100, screen[0], 100, 100, 30)
+    turned_diff = pixmap_diff(
+        mixed_turned, mixed_rect.width / 2, mixed_rect.height / 2, screen[90], 100, 100, 30
+    )
+    check("mixed sheets: upright panel stays upright", flat_diff < 2.5, f"diff={flat_diff:.2f}")
+    check(
+        "mixed sheets: spun panel keeps its spin",
+        turned_diff < 2.5,
+        f"diff={turned_diff:.2f}",
+    )
+    mixed_doc.close()
 
     # Dashed switch leg, including on a rotated sheet, plus a legend block.
     def dash_runs(pix, x0, x1, y, dark_at=180):
@@ -389,6 +492,67 @@ def main():
     check("dropped legend names the pendant", "Pendant" in leg_text)
     leg_view[0].get_pixmap(dpi=110, alpha=False).save("/tmp/planmarks-tools.png")
     leg_view.close()
+
+    def legend_title(page):
+        matrix = page.rotation_matrix
+        chars = []
+        for block in page.get_text("rawdict").get("blocks", []):
+            if block.get("type") != 0:
+                continue
+            for line in block.get("lines", []):
+                for span in line.get("spans", []):
+                    text = "".join(char["c"] for char in span.get("chars", []))
+                    if "SYMBOL" not in text:
+                        continue
+                    for char in span["chars"]:
+                        box = char["bbox"]
+                        point = pymupdf.Point((box[0] + box[2]) / 2, (box[1] + box[3]) / 2) * matrix
+                        chars.append((char["c"], point.x, point.y))
+        return chars
+
+    for page_rot in (90, 180, 270):
+        turned = pymupdf.open()
+        turned.new_page(width=720, height=560)
+        turned[0].set_rotation(page_rot)
+        turned_bytes = turned.tobytes()
+        turned.close()
+        turned_pdf = export_pdf(turned_bytes, leg_parsed, by_id)
+        turned_doc = pymupdf.open(stream=turned_pdf, filetype="pdf")
+        title = legend_title(turned_doc[0])
+        dx = title[-1][1] - title[0][1] if title else 0
+        dy = title[-1][2] - title[0][2] if title else 0
+        check(
+            f"sheet /Rotate {page_rot}: legend stays upright",
+            bool(title) and dx > 40 and abs(dy) < 2 and title[0][1] < 40 and title[0][2] < 50,
+            str(title[:4]),
+        )
+        turned_doc.close()
+
+    both = pymupdf.open()
+    both.new_page(width=720, height=560)
+    both.new_page(width=720, height=560)
+    both[1].set_rotation(90)
+    both_bytes = both.tobytes()
+    both.close()
+    both_pdf = export_pdf(
+        both_bytes,
+        [
+            {"kind": "legend", "page": 0, "x": 12, "y": 12, "width": min(300, layout["width"])},
+            {"kind": "legend", "page": 1, "x": 12, "y": 12, "width": min(300, layout["width"])},
+        ],
+        by_id,
+    )
+    both_doc = pymupdf.open(stream=both_pdf, filetype="pdf")
+    for index in (0, 1):
+        title = legend_title(both_doc[index])
+        dx = title[-1][1] - title[0][1] if title else 0
+        dy = title[-1][2] - title[0][2] if title else 0
+        check(
+            f"mixed sheets: legend on page {index + 1} stays upright",
+            bool(title) and dx > 40 and abs(dy) < 2,
+            str(title[:4]),
+        )
+    both_doc.close()
 
     spun_line = export_pdf(
         rotated_bytes,

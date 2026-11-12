@@ -176,6 +176,19 @@ def _svg_to_pdf(svg: str) -> pymupdf.Document:
     return pymupdf.open(stream=pdf_bytes, filetype="pdf")
 
 
+def _baked_rotation(rotation: float, page_rotation: int) -> float:
+    """On-screen spin, minus the /Rotate a viewer applies again.
+
+    The editor turns a symbol on the page as shown. Export draws into the
+    unrotated page box, and the viewer then honors /Rotate. Subtract that
+    quarter-turn (or half-turn) so the sheet matches the screen.
+    """
+    baked = (float(rotation) - (int(page_rotation) % 360)) % 360
+    if baked < 0.05 or baked > 359.95:
+        return 0.0
+    return baked
+
+
 def _rgb(color: str) -> tuple[float, float, float]:
     return (
         int(color[1:3], 16) / 255,
@@ -372,7 +385,16 @@ def _stamp_legend(page, item: dict, src: pymupdf.Document, nat_w: float, nat_h: 
     height = nat_h * width / nat_w
     rect = pymupdf.Rect(item["x"], item["y"], item["x"] + width, item["y"] + height)
     rect = rect * page.derotation_matrix
-    page.show_pdf_page(rect, src, 0, overlay=True, keep_proportion=True)
+    # The block is upright. This turn puts that upright edge on the page as
+    # shown, so a viewer’s /Rotate does not lay the legend on its side.
+    page.show_pdf_page(
+        rect,
+        src,
+        0,
+        overlay=True,
+        keep_proportion=True,
+        rotate=int(page.rotation) % 360,
+    )
 
 
 def export_pdf(pdf_bytes: bytes, placements: list[dict], symbols_by_id: dict) -> bytes:
@@ -415,12 +437,13 @@ def export_pdf(pdf_bytes: bytes, placements: list[dict], symbols_by_id: dict) ->
                 assert legend_size is not None
                 _stamp_legend(page, item, legend_doc, legend_size[0], legend_size[1])
                 continue
-            key = (item["symbolId"], round(float(item["rotation"]), 1), item["color"])
+            baked = _baked_rotation(item["rotation"], page.rotation)
+            key = (item["symbolId"], round(baked, 1), item["color"])
             src = cache.get(key)
             if src is None:
                 svg = prepare_svg(
                     symbols_by_id[item["symbolId"]]["svg"],
-                    item["rotation"],
+                    baked,
                     item["color"],
                 )
                 src = _svg_to_pdf(svg)
@@ -430,7 +453,8 @@ def export_pdf(pdf_bytes: bytes, placements: list[dict], symbols_by_id: dict) ->
             y = item["y"]
             rect = pymupdf.Rect(x - size / 2, y - size / 2, x + size / 2, y + size / 2)
             # show_pdf_page uses the unrotated page space. derotation_matrix
-            # maps a rectangle in the on-screen (rotated) view back to that space.
+            # maps a rectangle in the on-screen view back to that space.
+            # The spin itself was baked with the page rotation removed.
             rect = rect * page.derotation_matrix
             page.show_pdf_page(rect, src, 0, overlay=True, keep_proportion=True)
         return doc.tobytes(deflate=True, garbage=3)
